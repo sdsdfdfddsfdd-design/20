@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { GiftItem, Language, CartItem, DeliveryItem, EmployeeUser, AuthUser } from './types';
+import { GiftItem, Language, CartItem, DeliveryItem, EmployeeUser, AuthUser, HeroBannerItem } from './types';
 import { INITIAL_GIFTS } from './data/initialGifts';
 import { INITIAL_EMPLOYEES } from './data/initialEmployees';
+import { INITIAL_BANNERS } from './data/initialBanners';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { HeroBanners } from './components/HeroBanners';
@@ -16,7 +17,7 @@ import { AuthModal } from './components/AuthModal';
 import { SupportModal } from './components/SupportModal';
 import { VipModal } from './components/VipModal';
 import { Footer } from './components/Footer';
-import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, addDelivery } from './lib/firebaseService';
+import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery } from './lib/firebaseService';
 
 export default function App() {
   // Language (Default to Arabic as requested by the user, with RTL support)
@@ -60,6 +61,18 @@ export default function App() {
     const unsubscribe = subscribeToEmployees((newEmployees) => {
       if (newEmployees.length > 0) {
         setEmployees(newEmployees);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Hero Banners State with Firebase persistence & real-time sync across all clients
+  const [banners, setBanners] = useState<HeroBannerItem[]>(INITIAL_BANNERS);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToBanners((newBanners) => {
+      if (newBanners && newBanners.length > 0) {
+        setBanners(newBanners);
       }
     });
     return () => unsubscribe();
@@ -351,6 +364,7 @@ export default function App() {
             {/* Top Carousel Banner Showcase */}
             <HeroBanners
               lang={lang}
+              banners={banners}
               onSelectQuickCategory={handleQuickCategorySelect}
               onOpenCustomDesignModal={() => setIsSupportOpen(true)}
             />
@@ -455,6 +469,8 @@ export default function App() {
               activeEmployeeId={activeEmployeeId}
               setActiveEmployeeId={setActiveEmployeeId}
               onStaffLogin={handleStaffLogin}
+              banners={banners}
+              setBanners={setBanners}
             />
           )}
         </main>

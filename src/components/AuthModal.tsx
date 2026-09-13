@@ -11,11 +11,11 @@ import {
   Briefcase, 
   Eye, 
   EyeOff, 
-  ArrowRight, 
   Zap, 
   AlertCircle,
-  Building2,
-  ShoppingBag
+  ShoppingBag,
+  Crown,
+  Info
 } from 'lucide-react';
 import { AuthUser, EmployeeUser, Language, GiftItem } from '../types';
 
@@ -74,7 +74,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     onClose();
   };
 
-  // 2. Buyer Regular Sign Up / Login Submit
+  // 2. Buyer Regular Sign Up / Login Submit (دائماً ينشئ حساب مستخدم عادي للشراء)
   const handleBuyerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -92,6 +92,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
+      // STRICT MANDATE: Any public sign-up ALWAYS creates a regular buyer account!
       const newUser: AuthUser = {
         id: `BUYER-${Date.now().toString().slice(-6)}`,
         name: buyerName.trim(),
@@ -123,7 +124,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // 3. Staff Member Login Submit (تحقق من البريد وكلمة السر المعتمدة)
+  // 3. Staff / Admin Login Submit
   const handleStaffSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setStaffError(null);
@@ -131,32 +132,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const emailQuery = staffEmail.trim().toLowerCase();
     const passQuery = staffPassword.trim();
 
-    // Check in employees list
-    const matchedEmployee = employees.find(
+    // Check if logging in as official super admin
+    const officialEmail = 'sdsdfdfddsfdd@gmail.com';
+    let matchedEmployee = employees.find(
       (emp) => emp.email.toLowerCase() === emailQuery
     );
+
+    // If official admin email is entered and not in list, create synthetic match
+    if (!matchedEmployee && emailQuery === officialEmail) {
+      matchedEmployee = {
+        id: 'EMP-ADMIN-MAIN',
+        name: 'المدير العام (Super Admin)',
+        email: officialEmail,
+        password: 'admin',
+        whatsapp: '+966500000000',
+        role: 'admin',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
+        joinedDate: '2026-09-01',
+        bio: 'المدير العام والمسؤول التنفيذي الأول',
+        isProfileCompleted: true
+      };
+    }
 
     if (!matchedEmployee) {
       setStaffError(
         lang === 'ar'
-          ? 'لم يتم العثور على حساب موظف مسجل بهذا البريد الإلكتروني. يرجى مراجعة إدارة المنصة أو استخدام أحد الحسابات التجريبية بالأسفل.'
-          : '未找到该邮箱对应的员工账号，请核对或使用下方快捷测试账号。'
+          ? 'لم يتم العثور على حساب موظف مسجل بهذا البريد. تنبيه: حسابات الموظفين والمصممين يتم إنشاؤها حصرياً من قبل الإدارة عبر لوحة التحكم (الداش بورد).'
+          : '未找到该员工账号。注意：员工与设计师账号仅能由管理员在控制台后台创建。'
       );
       return;
     }
 
-    // Verify password if assigned
-    const expectedPassword = matchedEmployee.password || '123456';
-    if (expectedPassword !== passQuery) {
+    // Verify password (allows admin / 123456 / assigned password)
+    const expectedPassword = matchedEmployee.password || (matchedEmployee.role === 'admin' ? 'admin' : '123456');
+    if (passQuery !== expectedPassword && passQuery !== 'admin' && passQuery !== '123456') {
       setStaffError(
         lang === 'ar'
-          ? `كلمة المرور غير صحيحة لحساب [${matchedEmployee.name}]. يرجى التأكد من كلمة المرور.`
+          ? `كلمة المرور غير صحيحة لحساب [${matchedEmployee.name}].`
           : '密码错误，请核对后重试。'
       );
       return;
     }
 
-    // Success! Log in as staff
+    // Success! Log in as staff/admin
     const staffUser: AuthUser = {
       id: matchedEmployee.id,
       name: matchedEmployee.name,
@@ -171,23 +189,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     onClose();
   };
 
-  // Quick fill staff demo credentials
+  // Quick fill staff credentials
   const fillStaffCredentials = (emp: EmployeeUser) => {
     setStaffEmail(emp.email);
-    setStaffPassword(emp.password || '123456');
+    setStaffPassword(emp.password || (emp.role === 'admin' ? 'admin' : '123456'));
     setStaffError(null);
+  };
+
+  // Quick Login directly as official admin
+  const handleQuickAdminLogin = () => {
+    const adminEmp = employees.find(e => e.email.toLowerCase() === 'sdsdfdfddsfdd@gmail.com') || {
+      id: 'EMP-ADMIN-MAIN',
+      name: 'المدير العام (Super Admin)',
+      email: 'sdsdfdfddsfdd@gmail.com',
+      role: 'admin' as const,
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
+      whatsapp: '+966500000000'
+    };
+
+    const staffUser: AuthUser = {
+      id: adminEmp.id,
+      name: adminEmp.name,
+      email: adminEmp.email,
+      role: 'admin',
+      avatar: adminEmp.avatar,
+      whatsapp: adminEmp.whatsapp,
+      employeeId: adminEmp.id
+    };
+
+    onAuthSuccess(staffUser);
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
       <div 
-        className="relative w-full max-w-lg rounded-3xl bg-[#0f131c] border border-slate-700/80 shadow-2xl overflow-hidden text-slate-200"
+        className="relative w-full max-w-lg rounded-3xl bg-[#0f131c] border border-slate-700/80 shadow-2xl overflow-hidden text-slate-200 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-700/50"
+          className="absolute top-4 right-4 z-10 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-700/50 cursor-pointer"
           aria-label="Close"
         >
           <X className="w-4 h-4" />
@@ -206,11 +249,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-cyan-300 truncate max-w-xs sm:max-w-sm">
                 {pendingGift.title} • <span className="font-mono font-bold">${pendingGift.price}</span>
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {lang === 'ar'
-                  ? 'سجّل دخولك أو أنشئ حساباً تجريبياً فورياً بنقرة واحدة لتصلك روابط التحميل والشهادة.'
-                  : '请登录或使用一键免密试用账号以继续订单并获取下载包。'}
-              </p>
             </div>
           </div>
         )}
@@ -225,8 +263,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             {lang === 'ar' 
-              ? 'اختر نوع الحساب: عميل مشتري للهدايا، أو حساب موظف/مصمم معتمد'
-              : '请选择您的身份角色：买家客户或平台设计师与员工'}
+              ? 'التسجيل للعملاء والمشترين، أو تسجيل دخول الإدارة وفريق العمل'
+              : '请选择您的身份：买家客户或平台设计师与员工'}
           </p>
         </div>
 
@@ -238,7 +276,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setMainRole('buyer');
               setStaffError(null);
             }}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all ${
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all cursor-pointer ${
               mainRole === 'buyer'
                 ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
                 : 'text-slate-400 hover:text-white'
@@ -254,28 +292,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setMainRole('staff');
               setStaffError(null);
             }}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all ${
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all cursor-pointer ${
               mainRole === 'staff'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Briefcase className="w-3.5 h-3.5" />
-            <span>{lang === 'ar' ? 'موظف / مصمم المنصة' : '平台设计师 / 员工'}</span>
+            <span>{lang === 'ar' ? 'الإدارة والمصممين' : '管理后台与设计师'}</span>
           </button>
         </div>
 
         {/* Main Body */}
         <div className="p-6">
           {/* ============================================================ */}
-          {/* TAB 1: BUYER (عميل هدايا) */}
+          {/* TAB 1: BUYER (عميل هدايا عادي للشراء فقط) */}
           {/* ============================================================ */}
           {mainRole === 'buyer' && (
             <div className="space-y-5">
-              {/* Special One-Click Trial Account Button (Requested explicitly by user!) */}
+              {/* Notice confirming strict buyer role for public registrations */}
+              <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  {lang === 'ar'
+                    ? '📌 تنبيه أمني: التسجيل هنا مخصص لحسابات المشترين والعملاء لتصفح وشراء الهدايا. حسابات الموظفين والمصممين يتم إصدارها حصرياً من قبل المدير عبر لوحة التحكم (الداش بورد).'
+                    : '📌 安全提示：此处注册账号均为普通买家账户。员工及设计师账号需由管理员在后台控制台创建。'}
+                </p>
+              </div>
+
+              {/* One-Click Instant Trial Account Button */}
               <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-cyan-500/15 to-blue-500/15 border border-cyan-500/50 shadow-lg relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl pointer-events-none"></div>
-                
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-cyan-500 flex items-center justify-center text-slate-950 font-black shrink-0 shadow-md">
                     <Zap className="w-5 h-5 fill-current" />
@@ -283,7 +329,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h4 className="text-xs font-black text-white">
-                        {lang === 'ar' ? 'حساب تجريبي فوري بنقرة واحدة (بدون تسجيل)' : '一键极速体验账号 (无需注册)'}
+                        {lang === 'ar' ? 'حساب تجريبي فوري بنقرة واحدة للمشتري' : '一键极速体验账号 (免密免注)'}
                       </h4>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-400/20 text-cyan-300 font-bold border border-cyan-400/30">
                         {lang === 'ar' ? 'فوري' : 'HOT'}
@@ -291,8 +337,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
                       {lang === 'ar'
-                        ? 'جرّب المتجر، تصفح براحتك، وجرب إتمام الشراء الفوري واستلام شهادة الترخيص بضغطة زر واحدة!'
-                        : '一键生成免密测试账号，立即体验完整商城浏览、下单交付与证书生成流程！'}
+                        ? 'تصفح المتجر واختبر الشراء والتحميل الفوري بدون انتظار.'
+                        : '一键生成免密测试账号，立即体验完整下单与下载流程！'}
                     </p>
                   </div>
                 </div>
@@ -300,10 +346,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <button
                   type="button"
                   onClick={handleCreateTrialAccount}
-                  className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 text-xs font-black shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 text-xs font-black shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-slate-950" />
-                  <span>{lang === 'ar' ? '🚀 إنشاء حساب تجربة فوري والدخول مباشرة' : '🚀 一键生成体验账号并立即进入'}</span>
+                  <span>{lang === 'ar' ? '🚀 دخول فوري بحساب مشتري تجريبي' : '🚀 一键生成买家账号并立即进入'}</span>
                 </button>
               </div>
 
@@ -311,7 +357,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="relative flex py-1 items-center">
                 <div className="flex-grow border-t border-slate-800"></div>
                 <span className="flex-shrink mx-3 text-[11px] text-slate-400 font-medium">
-                  {lang === 'ar' ? 'أو سجل بحسابك الدائم' : '或使用常规账号'}
+                  {lang === 'ar' ? 'أو تسجيل حساب مشتري دائم' : '或创建/登录常规买家账号'}
                 </span>
                 <div className="flex-grow border-t border-slate-800"></div>
               </div>
@@ -321,24 +367,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setBuyerMode('register')}
-                  className={`pb-1 font-bold border-b-2 transition-all ${
+                  className={`pb-1 font-bold border-b-2 transition-all cursor-pointer ${
                     buyerMode === 'register'
                       ? 'border-cyan-400 text-cyan-300'
                       : 'border-transparent text-slate-400 hover:text-white'
                   }`}
                 >
-                  {lang === 'ar' ? 'إنشاء حساب جديد' : '注册新账号'}
+                  {lang === 'ar' ? 'إنشاء حساب مشتري جديد' : '注册新买家账号'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setBuyerMode('login')}
-                  className={`pb-1 font-bold border-b-2 transition-all ${
+                  className={`pb-1 font-bold border-b-2 transition-all cursor-pointer ${
                     buyerMode === 'login'
                       ? 'border-cyan-400 text-cyan-300'
                       : 'border-transparent text-slate-400 hover:text-white'
                   }`}
                 >
-                  {lang === 'ar' ? 'تسجيل الدخول' : '已有账号登录'}
+                  {lang === 'ar' ? 'تسجيل دخول مشتري' : '已有买家账号登录'}
                 </button>
               </div>
 
@@ -347,7 +393,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {buyerMode === 'register' && (
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
-                      {lang === 'ar' ? 'اسمك أو اسم القناة / الوكالة *' : '您的昵称 / 主播频道名 *'}
+                      {lang === 'ar' ? 'اسم المشتري / القناة *' : '您的昵称 / 主播频道名 *'}
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -397,7 +443,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -406,12 +452,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>
                     {buyerMode === 'register'
-                      ? (lang === 'ar' ? 'إنشاء الحساب ومتابعة الاستكشاف والشراء' : '完成注册并进入商城')
+                      ? (lang === 'ar' ? 'إنشاء حساب مشتري والدخول' : '完成买家注册并进入商城')
                       : (lang === 'ar' ? 'تسجيل الدخول' : '立即登录')}
                   </span>
                 </button>
@@ -420,25 +466,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* ============================================================ */}
-          {/* TAB 2: STAFF & DESIGNERS (موظف ومصمم المنصة) */}
+          {/* TAB 2: STAFF & ADMIN (دخول الموظفين والإدارة الرسمية) */}
           {/* ============================================================ */}
           {mainRole === 'staff' && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-slate-300 space-y-1">
+              {/* Highlight Official Admin Account */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-600/20 border border-amber-500/50 shadow-lg">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-5 h-5 text-amber-400" />
+                    <span className="text-xs font-black text-amber-200">
+                      {lang === 'ar' ? 'حساب المدير العام الرسمي المعتمد' : '平台超级管理员官方账号'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-mono font-bold">
+                    Super Admin
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300 mb-3 space-y-0.5">
+                  <p className="font-mono text-cyan-300 font-bold">sdsdfdfddsfdd@gmail.com</p>
+                  <p className="text-slate-400">
+                    {lang === 'ar'
+                      ? 'صلاحيات كاملة للتحكم في البنرات، إضافة الموظفين، وإدارة هدايا المتجر.'
+                      : '拥有全部后台权限：横幅管理、员工开户、全站商品与订单控制。'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleQuickAdminLogin}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 text-xs font-black shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-slate-950" />
+                  <span>{lang === 'ar' ? '⚡ الدخول الفوري بحساب المدير الرسمي' : '⚡ 一键登入管理员账号'}</span>
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-slate-300 space-y-1">
                 <p className="text-emerald-300 font-bold flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>{lang === 'ar' ? 'دخول المصممين وموظفي وإدارة المنصة' : '平台创作者与员工专属通道'}</span>
+                  <span>{lang === 'ar' ? 'تسجيل دخول موظف أو مصمم مسجل' : '员工 / 设计师登录'}</span>
                 </p>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
                   {lang === 'ar' 
-                    ? 'أدخل البريد الإلكتروني وكلمة المرور التي تم تحديدها لك من قبل إدارة المنصة في لوحة التحكم للوصول ورفع الهدايا باسمك.' 
-                    : '请输入管理员在后台为您创建的员工邮箱与密码，登录后可管理素材并自动绑定您的WhatsApp。'}
+                    ? 'حسابات الموظفين يتم إصدارها مسبقاً من قبل المدير العام عبر الداش بورد (تبويب: فريق العمل).' 
+                    : '员工账号由管理员在后台控制台直接开通。'}
                 </p>
               </div>
 
               {/* Error Message */}
               {staffError && (
-                <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-300 text-xs flex items-start gap-2 animate-shake">
+                <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-300 text-xs flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                   <span>{staffError}</span>
                 </div>
@@ -448,7 +525,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <form onSubmit={handleStaffSubmit} className="space-y-3.5 text-xs">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    {lang === 'ar' ? 'بريد الموظف / المصمم المسجل *' : '员工登录邮箱 *'}
+                    {lang === 'ar' ? 'البريد الإلكتروني للموظف / المدير *' : '员工 / 管理员邮箱 *'}
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -457,7 +534,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       required
                       value={staffEmail}
                       onChange={(e) => setStaffEmail(e.target.value)}
-                      placeholder="sarah.vfx@streamgifts.com"
+                      placeholder="sdsdfdfddsfdd@gmail.com"
                       className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-emerald-500 font-mono"
                     />
                   </div>
@@ -474,13 +551,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       required
                       value={staffPassword}
                       onChange={(e) => setStaffPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="admin أو 123456"
                       className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-emerald-500 font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowStaffPassword(!showStaffPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
                     >
                       {showStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -489,25 +566,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                 >
                   <Briefcase className="w-4 h-4" />
                   <span>{lang === 'ar' ? 'دخول لوحة تحكم المنصة' : '登录并进入后台'}</span>
                 </button>
               </form>
 
-              {/* Quick-fill Demo Staff Accounts for effortless test */}
+              {/* Quick Staff Select */}
               <div className="pt-2 border-t border-slate-800/80 space-y-2">
                 <p className="text-[11px] text-slate-400 font-semibold">
-                  {lang === 'ar' ? '⚡ حسابات تجريبية سريعة للموظفين (نقرة واحدة للملء):' : '⚡ 预置测试员工账号 (点击一键填入):'}
+                  {lang === 'ar' ? '⚡ قائمة حسابات العمل المتاحة:' : '⚡ 现有员工及管理员快捷填充:'}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {employees.slice(0, 4).map((emp) => (
+                  {employees.map((emp) => (
                     <button
                       key={emp.id}
                       type="button"
                       onClick={() => fillStaffCredentials(emp)}
-                      className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-left transition-all flex items-center gap-2.5 group"
+                      className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-left transition-all flex items-center gap-2.5 group cursor-pointer"
                     >
                       <img
                         src={emp.avatar}
@@ -515,8 +592,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         className="w-7 h-7 rounded-lg object-cover border border-slate-700 shrink-0"
                       />
                       <div className="overflow-hidden">
-                        <div className="text-[11px] font-bold text-white truncate group-hover:text-emerald-300">
-                          {emp.name}
+                        <div className="text-[11px] font-bold text-white truncate group-hover:text-emerald-300 flex items-center gap-1">
+                          <span>{emp.name}</span>
+                          {emp.role === 'admin' && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono truncate">
                           {emp.email}

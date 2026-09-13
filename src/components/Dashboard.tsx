@@ -37,13 +37,24 @@ import {
   PhoneCall,
   Shield,
   Briefcase,
-  X
+  X,
+  Image as ImageIcon
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
+import { INITIAL_BANNERS } from '../data/initialBanners';
 import { PrintDocumentModal } from './PrintDocumentModal';
-import { addGift, updateGift, deleteGift, updateEmployee } from '../lib/firebaseService';
+import { BannerManager } from './BannerManager';
+import { 
+  addGift, 
+  updateGift, 
+  deleteGift, 
+  updateEmployee, 
+  deleteEmployee, 
+  addDelivery, 
+  deleteDelivery 
+} from '../lib/firebaseService';
 
 interface DashboardProps {
   lang: Language;
@@ -58,6 +69,8 @@ interface DashboardProps {
   activeEmployeeId?: string;
   setActiveEmployeeId?: (id: string) => void;
   onStaffLogin?: (employee: EmployeeUser) => void;
+  banners?: HeroBannerItem[];
+  setBanners?: React.Dispatch<React.SetStateAction<HeroBannerItem[]>>;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -72,12 +85,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   setEmployees,
   activeEmployeeId,
   setActiveEmployeeId,
-  onStaffLogin
+  onStaffLogin,
+  banners,
+  setBanners
 }) => {
   const t = translations[lang];
 
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'guide'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide'>('create');
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const bannersList = banners || INITIAL_BANNERS;
 
   // Fallback Employees state if not passed from parent
   const [localEmployees, setLocalEmployees] = useState<EmployeeUser[]>(() => {
@@ -222,14 +239,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       status: 'completed'
     };
 
+    // Save to Firestore real-time collection so all users see it immediately!
+    addDelivery(newDelivery);
+
     if (setDeliveries) {
       setDeliveries((prev) => [newDelivery, ...prev]);
     }
 
     setSuccessMessage(
       lang === 'ar'
-        ? `تم رفع الطلب [${newDelivery.orderId}] بنجاح وتوليد شهادة الترخيص!`
-        : `订单 [${newDelivery.orderId}] 上传录入成功！`
+        ? `تم رفع الطلب [${newDelivery.orderId}] بنجاح وتوليد شهادة الترخيص وسماع التحديث لجميع المستخدمين فورياً!`
+        : `订单 [${newDelivery.orderId}] 上传录入成功，全网实时同步！`
     );
 
     // Reset Order Form
@@ -245,6 +265,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDeleteOrder = (orderId: string) => {
     if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الطلب من السجل؟' : '确认删除该订单记录？')) {
+      deleteDelivery(orderId);
       if (setDeliveries) {
         setDeliveries((prev) => prev.filter((d) => d.id !== orderId));
       }
@@ -316,27 +337,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     if (editingId) {
       // Update existing
-      
-      const updatedGift = {
-        ...gifts.find(g => g.id === editingId),
-
-              ...g,
-              title: title.trim(),
-              titleAr: titleAr.trim() || undefined,
-              price: Number(price),
-              vipPrice: Number(vipPrice),
-              exclusivePrice: Number(exclusivePrice),
-              videoUrl: videoUrl.trim(),
-              posterUrl: posterUrl.trim() || g.posterUrl,
-              formats: parsedFormats,
-              category,
-              theme: theme.trim() || '精品',
-              effectType,
-              deliveryUrl: deliveryUrl.trim() || g.deliveryUrl,
-              cloudDiskCode: cloudDiskCode.trim() || g.cloudDiskCode
-            
-      };
-      updateGift(updatedGift as GiftItem);
+      const existing = gifts.find(g => g.id === editingId);
+      if (existing) {
+        const updatedGift: GiftItem = {
+          ...existing,
+          title: title.trim(),
+          titleAr: titleAr.trim() || undefined,
+          price: Number(price),
+          vipPrice: Number(vipPrice),
+          exclusivePrice: Number(exclusivePrice),
+          videoUrl: videoUrl.trim(),
+          posterUrl: posterUrl.trim() || existing.posterUrl,
+          formats: parsedFormats,
+          category,
+          theme: theme.trim() || '精品',
+          effectType,
+          deliveryUrl: deliveryUrl.trim() || existing.deliveryUrl,
+          cloudDiskCode: cloudDiskCode.trim() || existing.cloudDiskCode
+        };
+        updateGift(updatedGift);
+      }
 
       setEditingId(null);
       setSuccessMessage(lang === 'ar' ? 'تم تحديث الهدية بنجاح!' : '素材更新成功！');
@@ -409,14 +429,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
-    updateEmployee({ ...activeStaff,
-              ...emp,
-              name: profileName.trim(),
-              whatsapp: profileWhatsapp.trim(),
-              bio: profileBio.trim() || emp.bio,
-              avatar: profileAvatar.trim() || emp.avatar,
-              isProfileCompleted: true
-            });
+    updateEmployee({
+      ...activeStaff,
+      name: profileName.trim(),
+      whatsapp: profileWhatsapp.trim(),
+      bio: profileBio.trim() || activeStaff.bio,
+      avatar: profileAvatar.trim() || activeStaff.avatar,
+      isProfileCompleted: true
+    });
 
     setAuthorName(profileName.trim());
     setIsProfileModalOpen(false);
@@ -457,6 +477,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       isProfileCompleted: true
     };
 
+    // Save to Firestore
+    updateEmployee(newEmp);
+
     setStaffList((prev) => [newEmp, ...prev]);
     handleSwitchStaff(newEmpId);
     setAuthorName(newEmp.name);
@@ -489,6 +512,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الموظف؟' : '确认删除此员工？')) {
+      deleteEmployee(empId);
       setStaffList((prev) => prev.filter((e) => e.id !== empId));
       if (activeStaff.id === empId) {
         const remaining = staffList.filter((e) => e.id !== empId);
@@ -619,6 +643,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <UserCheck className="w-4 h-4 text-emerald-400" />
           <span>{t.staffManagement} ({staffList.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('banners')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'banners'
+              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4 text-purple-400" />
+          <span>{lang === 'ar' ? 'إدارة البنرات (Banners)' : '横幅广告管理'} ({bannersList.length})</span>
         </button>
 
         <button
@@ -2071,6 +2107,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* TAB 5: HERO BANNERS MANAGEMENT (With Dimension Specs & Uploads) */}
+      {activeTab === 'banners' && (
+        <BannerManager
+          lang={lang}
+          banners={bannersList}
+          setBanners={setBanners}
+        />
       )}
 
       {/* TAB 4: EXTERNAL VIDEO CDN GUIDE */}

@@ -99,6 +99,20 @@ export interface EmployeeUser {
   isProfileCompleted: boolean;
 }
 
+export interface HeroBannerItem {
+  id: string;
+  badge: string;
+  title: string;
+  subtitle: string;
+  imageUrl?: string;
+  bgGradient?: string;
+  btnText: string;
+  btnLink?: string;
+  dimensionsNote?: string;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
 export type UserRole = 'buyer' | 'designer' | 'employee' | 'admin';
 
 export interface AuthUser {

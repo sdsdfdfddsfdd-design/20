@@ -2,6 +2,20 @@ import { EmployeeUser } from '../types';
 
 export const INITIAL_EMPLOYEES: EmployeeUser[] = [
   {
+    id: 'EMP-ADMIN-MAIN',
+    name: 'المدير العام (Super Admin)',
+    email: 'sdsdfdfddsfdd@gmail.com',
+    password: 'admin',
+    whatsapp: '+966500000000',
+    role: 'admin',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
+    joinedDate: '2026-09-01',
+    bio: 'المدير التنفيذي الرسمي للمنصة والمسؤول عن كافة الإعدادات والبنرات وفريق العمل',
+    giftsCount: 16,
+    totalSales: 154,
+    isProfileCompleted: true
+  },
+  {
     id: 'EMP-001',
     name: 'سارة المهندس (Sarah VFX)',
     email: 'sarah.vfx@streamgifts.com',
