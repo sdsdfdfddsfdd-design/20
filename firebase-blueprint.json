@@ -1,0 +1,125 @@
+{
+  "collections": [
+    {
+      "name": "gifts",
+      "description": "Gifts and effects store items",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "type": "number"
+        },
+        {
+          "name": "vipPrice",
+          "type": "number"
+        },
+        {
+          "name": "exclusivePrice",
+          "type": "number"
+        },
+        {
+          "name": "videoUrl",
+          "type": "string"
+        },
+        {
+          "name": "posterUrl",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "theme",
+          "type": "string"
+        },
+        {
+          "name": "effectType",
+          "type": "string"
+        },
+        {
+          "name": "author",
+          "type": "map"
+        },
+        {
+          "name": "formats",
+          "type": "array"
+        },
+        {
+          "name": "tags",
+          "type": "array"
+        },
+        {
+          "name": "downloadsCount",
+          "type": "number"
+        },
+        {
+          "name": "favoritesCount",
+          "type": "number"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp"
+        }
+      ],
+      "access": "read:all, write:admin_or_designer"
+    },
+    {
+      "name": "deliveries",
+      "description": "Purchased deliveries history",
+      "fields": [
+        {
+          "name": "orderId",
+          "type": "string"
+        },
+        {
+          "name": "giftId",
+          "type": "string"
+        },
+        {
+          "name": "giftTitle",
+          "type": "string"
+        },
+        {
+          "name": "buyerContact",
+          "type": "string"
+        },
+        {
+          "name": "purchaseDate",
+          "type": "timestamp"
+        },
+        {
+          "name": "price",
+          "type": "number"
+        }
+      ],
+      "access": "read:buyer_or_admin, write:buyer_or_admin"
+    },
+    {
+      "name": "employees",
+      "description": "Employee and designer accounts",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "string"
+        },
+        {
+          "name": "whatsapp",
+          "type": "string"
+        }
+      ],
+      "access": "read:all, write:admin_only"
+    }
+  ]
+}
