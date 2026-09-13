@@ -1,12 +1,12 @@
 {
-  "projectId": "zzdds-5485c",
-  "appId": "1:1097273433637:web:672e039ab43512955de9cc",
-  "apiKey": "AIzaSyCtz56koDxpCkSvz-c29c_NWu5E19qO5qM",
-  "authDomain": "zzdds-5485c.firebaseapp.com",
+  "projectId": "svga-vip",
+  "appId": "1:850648356406:web:986246d3ab7f61724c2a97",
+  "apiKey": "AIzaSyDcF8JDy7djoMGpsRAkM-Nqjmq2KswqQgI",
+  "authDomain": "svga-vip.firebaseapp.com",
   "firestoreDatabaseId": "(default)",
-  "storageBucket": "zzdds-5485c.firebasestorage.app",
-  "messagingSenderId": "1097273433637",
-  "measurementId": "G-C9L1GV66M6",
+  "storageBucket": "svga-vip.firebasestorage.app",
+  "messagingSenderId": "850648356406",
+  "measurementId": "",
   "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
