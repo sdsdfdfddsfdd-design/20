@@ -196,6 +196,35 @@ export async function updateEmployee(employee: EmployeeUser) {
   }
 }
 
+export async function changeEmployeeRole(employee: EmployeeUser, newRole: UserRole) {
+  try {
+    await ensureFirebaseAuth();
+    
+    // Determine collections based on old and new roles
+    const oldColName = (employee.role === 'designer' || employee.role === 'admin' || employee.role === 'employee') 
+      ? 'employees' 
+      : 'users';
+      
+    const newColName = (newRole === 'designer' || newRole === 'admin' || newRole === 'employee') 
+      ? 'employees' 
+      : 'users';
+      
+    const updatedEmployee = { ...employee, role: newRole };
+    
+    // If collection changes, write to new and delete from old
+    if (oldColName !== newColName) {
+      await setDoc(doc(db, newColName, employee.id), sanitizeData(updatedEmployee), { merge: true });
+      await deleteDoc(doc(db, oldColName, employee.id));
+    } else {
+      // Just update in the same collection
+      await setDoc(doc(db, newColName, employee.id), sanitizeData(updatedEmployee), { merge: true });
+    }
+  } catch (error) {
+    console.error('Error changing employee role:', handleFirestoreError(error));
+    throw error;
+  }
+}
+
 export async function toggleEmployeeStatus(id: string, status: 'active' | 'inactive', role: UserRole = 'employee') {
   try {
     await ensureFirebaseAuth();

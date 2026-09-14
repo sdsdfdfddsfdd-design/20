@@ -52,6 +52,7 @@ import {
   updateGift, 
   deleteGift, 
   updateEmployee, 
+  changeEmployeeRole,
   deleteEmployee, 
   toggleEmployeeStatus,
   toggleEmployeeGiftPermission,
@@ -647,13 +648,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Delete Staff
-  const handleDeleteStaff = (empId: string) => {
+  const handleDeleteStaff = (empId: string, role: UserRole) => {
     if (staffList.length <= 1) {
       alert(lang === 'ar' ? 'لا يمكن حذف الموظف الوحيد في المنصة.' : '不能删除唯一的员工账号');
       return;
     }
     if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الحساب؟' : '确认删除此账号？')) {
-      deleteEmployee(empId);
+      deleteEmployee(empId, role);
       setStaffList((prev) => prev.filter((e) => e.id !== empId));
       if (activeStaff.id === empId) {
         const remaining = staffList.filter((e) => e.id !== empId);
@@ -2344,9 +2345,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 <div className="space-y-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-black text-white">{emp.name}</span>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
-                                      {emp.role === 'admin' ? t.adminRole : emp.role === 'designer' ? t.designerRole : 'موظف'}
-                                    </span>
+                                    
+                                    <select
+                                      value={emp.role}
+                                      onChange={(e) => {
+                                        const newRole = e.target.value as UserRole;
+                                        // Find if we need to call an API to update the role
+                                        // Use the new changeEmployeeRole function
+                                        changeEmployeeRole(emp, newRole).then(() => {
+                                          setStaffList((prev) => prev.map((u) => u.id === emp.id ? { ...u, role: newRole } : u));
+                                          setSuccessMessage(lang === 'ar' ? `تم تغيير وظيفة/صلاحيات ${emp.name} بنجاح` : 'Role updated successfully');
+                                          setTimeout(() => setSuccessMessage(null), 3000);
+                                        }).catch((err) => {
+                                          alert(lang === 'ar' ? 'حدث خطأ أثناء تغيير الصلاحية' : 'Error updating role');
+                                        });
+                                      }}
+                                      className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none"
+                                      title={lang === 'ar' ? 'تغيير الوظيفة والصلاحيات' : 'Change Role'}
+                                    >
+                                      <option value="admin">{t.adminRole}</option>
+                                      <option value="designer">{t.designerRole}</option>
+                                      <option value="employee">{lang === 'ar' ? 'موظف' : 'Employee'}</option>
+                                      <option value="buyer">{lang === 'ar' ? 'مستخدم عادي / مشتري' : 'Buyer'}</option>
+                                    </select>
 
                                     {/* Active Account Status Badge */}
                                     {isActiveAccount ? (
