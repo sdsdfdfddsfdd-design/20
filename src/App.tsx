@@ -58,12 +58,34 @@ export default function App() {
   const [employees, setEmployees] = useState<EmployeeUser[]>(INITIAL_EMPLOYEES);
 
   useEffect(() => {
-    const unsubscribe = subscribeToEmployees((newEmployees) => {
-      if (newEmployees.length > 0) {
-        setEmployees(newEmployees);
+    let currentEmployees: EmployeeUser[] = [];
+    let currentUsers: EmployeeUser[] = [];
+
+    const updateCombined = () => {
+      // Merge and remove duplicates if any (just in case)
+      const combined = [...currentEmployees, ...currentUsers];
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      if (unique.length > 0) {
+        setEmployees(unique);
+      } else {
+        setEmployees(INITIAL_EMPLOYEES);
       }
+    };
+
+    import('./lib/firebaseService').then(({ subscribeToEmployees, subscribeToUsers }) => {
+      const unsubEmployees = subscribeToEmployees((newEmployees) => {
+        currentEmployees = newEmployees;
+        updateCombined();
+      });
+      const unsubUsers = subscribeToUsers((newUsers) => {
+        currentUsers = newUsers;
+        updateCombined();
+      });
+      return () => {
+        unsubEmployees();
+        unsubUsers();
+      };
     });
-    return () => unsubscribe();
   }, []);
 
   // Hero Banners State with Firebase persistence & real-time sync across all clients
@@ -424,9 +446,9 @@ export default function App() {
           </main>
         </div>
       ) : (
-        /* DASHBOARD VIEW (Admin Only Access / Role Guard) */
+        /* DASHBOARD VIEW (Admin or User with permissions) */
         <main className="flex-1 w-full">
-          {(!user || user.role !== 'admin') ? (
+          {(!user || (!['admin', 'employee', 'designer'].includes(user.role) && !user.permissions?.giftUploadAndPublish)) ? (
             <div className="max-w-xl mx-auto my-16 p-8 rounded-3xl bg-[#111520] border border-slate-800 text-center space-y-5 shadow-2xl">
               <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -435,12 +457,12 @@ export default function App() {
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-black text-white">
-                  {lang === 'ar' ? 'منطقة لوحة التحكم خاصة بحساب المسؤول فقط (Super Admin)' : '管理后台仅对超级管理员开放'}
+                  {lang === 'ar' ? 'منطقة لوحة التحكم خاصة بالمسؤولين والمصرح لهم فقط' : '管理后台仅对超级管理员或授权用户开放'}
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
                   {lang === 'ar'
-                    ? 'يتطلب الوصول إلى لوحة التحكم تسجيل الدخول بحساب المسؤول المعتمد بكامل الصلاحيات لإدارة ونشر الهدايا، البنرات الإعلانية، مراجعة الطلبات، وضبط الحسابات.'
-                    : '访问管理后台需要使用拥有完整权限的超级管理员账号登录，以管理素材、横幅广告、审核订单及分配权限。'}
+                    ? 'يتطلب الوصول إلى لوحة التحكم تسجيل الدخول بحساب معتمد بصلاحيات لإدارة ونشر الهدايا.'
+                    : '访问管理后台需要使用拥有完整权限的账号登录。'}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -452,14 +474,14 @@ export default function App() {
                   }}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
                 >
-                  {lang === 'ar' ? 'تسجيل دخول المسؤول' : '管理员登录'}
+                  {lang === 'ar' ? 'تسجيل الدخول' : '管理员登录'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setCurrentView('store')}
                   className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700"
                 >
-                  {lang === 'ar' ? 'العودة للمتجر للتسوق' : '返回素材商城'}
+                  {lang === 'ar' ? 'العودة للمتجر' : '返回素材商城'}
                 </button>
               </div>
             </div>

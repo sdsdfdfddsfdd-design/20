@@ -186,27 +186,36 @@ export function subscribeToEmployees(callback: (employees: EmployeeUser[]) => vo
 export async function updateEmployee(employee: EmployeeUser) {
   try {
     await ensureFirebaseAuth();
-    await setDoc(doc(db, 'employees', employee.id), employee, { merge: true });
+    const colName = (employee.role === 'designer' || employee.role === 'admin' || employee.role === 'employee') 
+      ? 'employees' 
+      : 'users';
+    await setDoc(doc(db, colName, employee.id), sanitizeData(employee), { merge: true });
   } catch (error) {
     console.error('Error updating employee:', handleFirestoreError(error));
     throw error;
   }
 }
 
-export async function toggleEmployeeStatus(id: string, status: 'active' | 'inactive') {
+export async function toggleEmployeeStatus(id: string, status: 'active' | 'inactive', role: UserRole = 'employee') {
   try {
     await ensureFirebaseAuth();
-    await setDoc(doc(db, 'employees', id), { status }, { merge: true });
+    const colName = (role === 'designer' || role === 'admin' || role === 'employee') 
+      ? 'employees' 
+      : 'users';
+    await setDoc(doc(db, colName, id), { status }, { merge: true });
   } catch (error) {
     console.error('Error toggling employee status:', handleFirestoreError(error));
     throw error;
   }
 }
 
-export async function toggleEmployeeGiftPermission(id: string, canUpload: boolean) {
+export async function toggleEmployeeGiftPermission(id: string, canUpload: boolean, role: UserRole = 'employee') {
   try {
     await ensureFirebaseAuth();
-    const empRef = doc(db, 'employees', id);
+    const colName = (role === 'designer' || role === 'admin' || role === 'employee') 
+      ? 'employees' 
+      : 'users';
+    const empRef = doc(db, colName, id);
     try {
       await updateDoc(empRef, {
         'permissions.giftUploadAndPublish': canUpload
@@ -224,10 +233,13 @@ export async function toggleEmployeeGiftPermission(id: string, canUpload: boolea
   }
 }
 
-export async function deleteEmployee(id: string) {
+export async function deleteEmployee(id: string, role: UserRole = 'employee') {
   try {
     await ensureFirebaseAuth();
-    await deleteDoc(doc(db, 'employees', id));
+    const colName = (role === 'designer' || role === 'admin' || role === 'employee') 
+      ? 'employees' 
+      : 'users';
+    await deleteDoc(doc(db, colName, id));
   } catch (error) {
     console.error('Error deleting employee:', handleFirestoreError(error));
     throw error;

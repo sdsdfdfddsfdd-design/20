@@ -62,11 +62,13 @@ export const Header: React.FC<HeaderProps> = ({
       onOpenStaffAuth();
       return;
     }
-    if (user.role !== 'admin') {
+    const hasUploadPermission = user.permissions?.giftUploadAndPublish;
+    const isAdmin = user.role === 'admin' || user.role === 'employee' || user.role === 'designer';
+    
+    if (!isAdmin && !hasUploadPermission) {
       alert(lang === 'ar' 
-        ? '⚠️ لوحة التحكم مخصصة لحساب المسؤول (Super Admin) فقط. يرجى تسجيل الدخول بحساب المسؤول للوصول.' 
-        : '管理后台仅对超级管理员开放。请使用管理员账号登录。');
-      onOpenStaffAuth();
+        ? '⚠️ ليس لديك صلاحية للدخول إلى لوحة التحكم. يمكنك طلب ترقية حسابك من الإدارة.' 
+        : '您没有权限进入控制台。');
       return;
     }
     setCurrentView(currentView === 'store' ? 'dashboard' : 'store');
@@ -153,28 +155,30 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Nav & Action Buttons */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Dashboard / Store Toggle Button */}
-          <button
-            onClick={handleDashboardClick}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
-              currentView === 'dashboard'
-                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-md shadow-cyan-500/10'
-                : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-transparent hover:opacity-95 shadow-md shadow-blue-500/20'
-            }`}
-          >
-            {currentView === 'dashboard' ? (
-              <>
-                <Store className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{t.backToStore}</span>
-              </>
-            ) : (
-              <>
-                <LayoutDashboard className="w-3.5 h-3.5 text-white" />
-                <span>{t.dashboard}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              </>
-            )}
-          </button>
+          {/* Dashboard / Store Toggle Button - ONLY SHOW IF HAS PERMISSION OR IS ADMIN */}
+          {user && (user.role === 'admin' || user.role === 'employee' || user.role === 'designer' || user.permissions?.giftUploadAndPublish) && (
+            <button
+              onClick={handleDashboardClick}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
+                currentView === 'dashboard'
+                  ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-md shadow-cyan-500/10'
+                  : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-transparent hover:opacity-95 shadow-md shadow-blue-500/20'
+              }`}
+            >
+              {currentView === 'dashboard' ? (
+                <>
+                  <Store className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{t.backToStore}</span>
+                </>
+              ) : (
+                <>
+                  <LayoutDashboard className="w-3.5 h-3.5 text-white" />
+                  <span>{t.dashboard}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Deliveries Box Shortcut */}
           <button

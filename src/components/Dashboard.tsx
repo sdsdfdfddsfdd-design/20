@@ -147,7 +147,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const activeStaff = staffList.find((e) => e.id === currentEmpId) || staffList[0];
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'employee' || currentUser?.role === 'designer';
+  
+  const activeStaff = isAdmin 
+    ? (staffList.find((e) => e.id === currentEmpId) || staffList[0]) 
+    : (currentUser as unknown as EmployeeUser) || staffList[0];
+
+  // If non-admin user lands here, ensure activeTab is one they have access to
+  useEffect(() => {
+    if (!isAdmin && activeTab !== 'create' && activeTab !== 'list') {
+      setActiveTab('create');
+    }
+  }, [isAdmin, activeTab]);
 
   // First-Time Profile Setup Modal State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -679,11 +690,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const filteredGifts = gifts.filter((g) =>
-    g.title.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    g.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    (g.titleAr && g.titleAr.includes(searchFilter))
-  );
+  const filteredGifts = gifts.filter((g) => {
+    // Search filter
+    const matchesSearch = g.title.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      g.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      (g.titleAr && g.titleAr.includes(searchFilter));
+      
+    // Permission filter
+    const matchesPermission = isAdmin || (currentUser && g.author.id === currentUser.id);
+    
+    return matchesSearch && matchesPermission;
+  });
 
   return (
     <div className="max-w-[1720px] mx-auto p-4 sm:p-6 space-y-6">
@@ -727,10 +744,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs font-semibold">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs font-semibold overflow-x-auto">
         <button
           onClick={() => setActiveTab('create')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
             activeTab === 'create'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
               : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -742,7 +759,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         <button
           onClick={() => setActiveTab('list')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
             activeTab === 'list'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
               : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -752,77 +769,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <span>{t.manageGifts} ({gifts.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'orders'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <PackageCheck className="w-4 h-4" />
-          <span>{t.ordersLog} ({deliveries.length})</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+              activeTab === 'orders'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <PackageCheck className="w-4 h-4" />
+            <span>{t.ordersLog} ({deliveries.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('staff')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'staff'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <UserCheck className="w-4 h-4 text-emerald-400" />
-          <span>{lang === 'ar' ? 'إدارة الحسابات والصلاحيات' : t.staffManagement} ({staffList.length})</span>
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => setActiveTab('staff')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'staff'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-emerald-400" />
+              <span>{lang === 'ar' ? 'إدارة الحسابات والصلاحيات' : t.staffManagement} ({staffList.length})</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('banners')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'banners'
-              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4 text-purple-400" />
-          <span>{lang === 'ar' ? 'إدارة البنرات (Banners)' : '横幅广告管理'} ({bannersList.length})</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('banners')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'banners'
+                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <ImageIcon className="w-4 h-4 text-purple-400" />
+              <span>{lang === 'ar' ? 'إدارة البنرات (Banners)' : '横幅广告管理'} ({bannersList.length})</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('guide')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'guide'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Globe className="w-4 h-4" />
-          <span>{t.cdnGuide}</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('guide')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'guide'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              <span>{t.cdnGuide}</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('categories')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'categories'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Layers className="w-4 h-4 text-emerald-400" />
-          <span>{lang === 'ar' ? 'إدارة الأقسام' : '分类管理'}</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('categories')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'categories'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Layers className="w-4 h-4 text-emerald-400" />
+              <span>{lang === 'ar' ? 'إدارة الأقسام' : '分类管理'}</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'settings'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <SlidersHorizontal className="w-4 h-4 text-amber-400" />
-          <span>{lang === 'ar' ? 'إعدادات الموقع' : '网站设置'}</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'settings'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+              <span>{lang === 'ar' ? 'إعدادات الموقع' : '网站设置'}</span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* TAB 1: ADD / EDIT GIFT FORM (Part 2 of user request) */}
@@ -2378,7 +2401,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <div className="flex items-center gap-2 self-start sm:self-center">
                                 <button
                                   type="button"
-                                  onClick={() => handleToggleStaffStatus(emp.id, isActiveAccount ? 'inactive' : 'active')}
+                                  onClick={() => handleToggleStaffStatus(emp.id, isActiveAccount ? 'inactive' : 'active', emp.role)}
                                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                                     isActiveAccount
                                       ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
@@ -2427,7 +2450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               {/* Toggle Permission Button */}
                               <button
                                 type="button"
-                                onClick={() => handleToggleGiftPermission(emp.id, emp.permissions?.giftUploadAndPublish !== false)}
+                                onClick={() => handleToggleGiftPermission(emp.id, emp.permissions?.giftUploadAndPublish !== false, emp.role)}
                                 className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer ${
                                   emp.permissions?.giftUploadAndPublish !== false
                                     ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
@@ -2534,7 +2557,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {staffList.length > 1 && (
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteStaff(emp.id)}
+                                    onClick={() => handleDeleteStaff(emp.id, emp.role)}
                                     className="p-1.5 rounded-xl hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-colors cursor-pointer"
                                     title={t.deleteStaffBtn}
                                   >
