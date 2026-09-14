@@ -16,10 +16,10 @@ export interface GiftItem {
   vipPrice: number; // in CNY
   exclusivePrice: number; // 全网排他
   videoUrl: string; // Direct external video link (0 server bandwidth)
-  posterUrl: string; // Thumbnail / poster image
+  posterUrl?: string; // Thumbnail / poster image (optional - if omitted, video acts as main showcase face)
   formats: GiftFormat[];
   tags: string[]; // e.g. ['AI原创', '浪漫', '礼物', '2D', '热销']
-  category: 'romance' | 'tech' | 'ancient' | 'festival' | 'luxury' | 'fun' | 'character';
+  category: string; // 'general' (القسم العام) or custom category created by admin
   theme: string;
   effectType: '2D' | '3D';
   author: {
@@ -84,45 +84,76 @@ export interface OrderRecord {
   status: 'completed';
 }
 
+export type AccountStatus = 'active' | 'inactive';
+
+export interface UserPermissions {
+  giftUploadAndPublish: boolean; // Gift Upload & Publishing Permission (صلاحية رفع ونشر الهدايا)
+  manageAccounts?: boolean;       // إدارة وتفعيل الحسابات
+  manageBanners?: boolean;        // إدارة البنرات الإعلانية
+  viewOrders?: boolean;           // عرض سجل الطلبات والمبيعات
+}
+
+export type UserRole = 'buyer' | 'designer' | 'employee' | 'admin';
+
 export interface EmployeeUser {
   id: string;
   name: string;
   email: string;
   password?: string; // Login password assigned by admin
-  whatsapp: string; // e.g. +966501234567 or 966501234567
-  role: 'designer' | 'employee' | 'admin';
+  whatsapp: string; // e.g. +966501234567
+  role: UserRole;
+  status: AccountStatus; // Active / Inactive (مفعل / غير مفعل)
+  permissions: UserPermissions; // Fine-grained permissions
   avatar: string;
   joinedDate: string;
   bio?: string;
   giftsCount?: number;
   totalSales?: number;
   isProfileCompleted: boolean;
+  lastLogin?: string;
 }
 
 export interface HeroBannerItem {
   id: string;
-  badge: string;
-  title: string;
-  subtitle: string;
+  badge?: string;
+  title?: string;
+  subtitle?: string;
   imageUrl?: string;
   bgGradient?: string;
-  btnText: string;
-  btnLink?: string;
+  btnText?: string;
+  btnLink?: string; // Target URL or link (e.g. https://... or internal category/action)
   dimensionsNote?: string;
   isActive?: boolean;
   createdAt?: string;
 }
 
-export type UserRole = 'buyer' | 'designer' | 'employee' | 'admin';
+export interface CustomCategory {
+  id: string;
+  name: string; // e.g. "القسم العام", "سيارات فارهة", "شخصيات ثلاثية الأبعاد"
+  nameAr?: string;
+  isDefault?: boolean;
+  createdAt?: string;
+}
+
+export interface SiteSettings {
+  siteName: string;
+  siteSlogan?: string;
+  siteSubTitle?: string;
+  logoUrl?: string; // Custom uploaded site logo (base64 data URL or external URL)
+  updatedAt?: string;
+}
 
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  status: AccountStatus; // Active / Inactive
+  permissions: UserPermissions;
   avatar: string;
   whatsapp?: string;
   isTrial?: boolean; // Trial / Demo account
   employeeId?: string; // If logged in as staff
+  lastLogin?: string;
 }
 

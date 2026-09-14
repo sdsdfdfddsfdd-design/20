@@ -34,10 +34,10 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
   // Form fields
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
-  const [badge, setBadge] = useState('تصميم مخصص مرخص · حماية الملكية');
+  const [badge, setBadge] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [btnText, setBtnText] = useState('طلب تصميم خاص للمؤثرات');
-  const [btnLink, setBtnLink] = useState('custom_design');
+  const [btnText, setBtnText] = useState('');
+  const [btnLink, setBtnLink] = useState('');
   const [dimensionsNote, setDimensionsNote] = useState('1920 × 600 px (نسبة 16:5)');
   const [isActive, setIsActive] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -92,22 +92,22 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
     setEditingId(null);
     setTitle('');
     setSubtitle('');
-    setBadge(lang === 'ar' ? 'تصميم مخصص مرخص · حماية الملكية' : '原创定制 · 官方首发');
+    setBadge('');
     setImageUrl('');
-    setBtnText(lang === 'ar' ? 'طلب تصميم خاص للمؤثرات' : '咨询定制方案 →');
-    setBtnLink('custom_design');
+    setBtnText('');
+    setBtnLink('');
     setDimensionsNote('1920 × 600 px (نسبة 16:5)');
     setIsActive(true);
   };
 
   const handleStartEdit = (b: HeroBannerItem) => {
     setEditingId(b.id);
-    setTitle(b.title);
-    setSubtitle(b.subtitle);
+    setTitle(b.title || '');
+    setSubtitle(b.subtitle || '');
     setBadge(b.badge || '');
     setImageUrl(b.imageUrl || '');
     setBtnText(b.btnText || '');
-    setBtnLink(b.btnLink || 'custom_design');
+    setBtnLink(b.btnLink || '');
     setDimensionsNote(b.dimensionsNote || '1920 × 600 px (نسبة 16:5)');
     setIsActive(b.isActive !== false);
     window.scrollTo({ top: 400, behavior: 'smooth' });
@@ -115,19 +115,21 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
-      alert(lang === 'ar' ? 'يرجى إدخال عنوان البنر الرئيسي' : '请输入横幅主标题');
+    if (!imageUrl.trim() && !title.trim()) {
+      alert(lang === 'ar' 
+        ? 'يرجى إما رفع صورة للبنر أو كتابة نص للبنر (يمكنك رفع صورة بدون أي كتابة كما طلبت)' 
+        : '请上传横幅图片或输入文本（支持无文字纯图横幅）');
       return;
     }
 
     const bannerData: HeroBannerItem = {
       id: editingId || `BANNER-${Date.now().toString().slice(-6)}`,
-      badge: badge.trim() || (lang === 'ar' ? 'تصميم مخصص مرخص' : '原创定制'),
-      title: title.trim(),
-      subtitle: subtitle.trim() || (lang === 'ar' ? 'مؤثرات بصرية وهدايا رقمية للبث المباشر' : '直播动画动效素材'),
+      badge: badge.trim() || undefined,
+      title: title.trim() || undefined,
+      subtitle: subtitle.trim() || undefined,
       imageUrl: imageUrl.trim() || undefined,
-      btnText: btnText.trim() || (lang === 'ar' ? 'تصفح الآن' : '立即探索'),
-      btnLink: btnLink.trim() || 'custom_design',
+      btnText: btnText.trim() || undefined,
+      btnLink: btnLink.trim() || undefined,
       dimensionsNote: dimensionsNote.trim() || '1920 × 600 px (16:5)',
       isActive: isActive,
       createdAt: new Date().toISOString().split('T')[0]
@@ -263,44 +265,58 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
           {/* Background Image Preview */}
           {imageUrl ? (
             <div 
-              className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity"
+              className="absolute inset-0 bg-cover bg-center opacity-100"
               style={{ backgroundImage: `url(${imageUrl})` }}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-transparent" />
+              {(title || subtitle || badge || btnText) && (
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/50 to-slate-950/20" />
+              )}
             </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-indigo-950/80 to-blue-950/90" />
           )}
 
-          <div className="relative z-10 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[11px] font-semibold text-cyan-300 shadow-sm">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{badge || 'تصميم مخصص مرخص'}</span>
-              </span>
+          {/* Render text overlay ONLY if at least one text field is filled */}
+          {(title || subtitle || badge || btnText) ? (
+            <div className="relative z-10 max-w-2xl">
+              {badge && (
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[11px] font-semibold text-cyan-300 shadow-sm backdrop-blur">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{badge}</span>
+                  </span>
+                </div>
+              )}
 
-              {/* Exact size tag written on banner */}
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[10px] font-mono text-cyan-200">
-                <Maximize2 className="w-3 h-3 text-cyan-400" />
-                <span>المقاس: {dimensionsNote || '1920 × 600 px'}</span>
+              {title && (
+                <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-snug mb-2">
+                  {title}
+                </h2>
+              )}
+
+              {subtitle && (
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4 max-w-xl">
+                  {subtitle}
+                </p>
+              )}
+
+              {btnText && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
+                >
+                  <span>{btnText}</span>
+                  {btnLink && <ExternalLink className="w-3 h-3 text-white/80" />}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="relative z-10 text-center py-6">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] text-slate-300">
+                ✨ {lang === 'ar' ? 'بنر بصري نقي بدون كتابة (الصورة تظهر واضحة بالكامل للزوار)' : '纯图片横幅（全高清展现，无遮挡）'}
               </span>
             </div>
-
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-snug mb-2">
-              {title || (lang === 'ar' ? 'عنوان البنر التجريبي سيظهر هنا' : '横幅主标题')}
-            </h2>
-
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4 max-w-xl">
-              {subtitle || (lang === 'ar' ? 'الوصف والنص الإعلاني الترويجي للبنر سيظهر هنا بشكل جذاب وواضح...' : '副标题与宣传语介绍...')}
-            </p>
-
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
-            >
-              <span>{btnText || 'طلب تصميم خاص'}</span>
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
@@ -327,103 +343,14 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
         </div>
 
         <form onSubmit={handleSave} className="space-y-4 text-xs">
-          {/* Main Title & Subtitle */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                {lang === 'ar' ? 'العنوان الرئيسي للبنر *' : '横幅主标题 *'}
-              </label>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="مثال: منصة المؤثرات البصرية والهدايا الرقمية المرخصة"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                {lang === 'ar' ? 'الشارة العلوية (Badge Tag)' : '顶部角标文字'}
-              </label>
-              <input
-                type="text"
-                value={badge}
-                onChange={(e) => setBadge(e.target.value)}
-                placeholder="مثال: تصميم مخصص مرخص · حماية الملكية"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              {lang === 'ar' ? 'النص التعريفي / الوصف الإعلاني *' : '宣传文案 / 副标题 *'}
-            </label>
-            <textarea
-              rows={2}
-              value={subtitle}
-              onChange={(e) => setSubtitle(e.target.value)}
-              placeholder="مثال: أكثر من 50,000 مؤثر بصري ومتحرك بصيغ SVGA و MP4 الشفاف مع تسليم فوري وتوثيق رسمي..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500 leading-relaxed"
-            />
-          </div>
-
-          {/* Button Text, Link, and Dimensions Note */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                {lang === 'ar' ? 'نص زر البنر *' : '按钮文字 *'}
-              </label>
-              <input
-                type="text"
-                value={btnText}
-                onChange={(e) => setBtnText(e.target.value)}
-                placeholder="مثال: طلب تصميم خاص للمؤثرات"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                {lang === 'ar' ? 'وجهة الزر (Action Target)' : '按钮跳转目标'}
-              </label>
-              <select
-                value={btnLink}
-                onChange={(e) => setBtnLink(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
-              >
-                <option value="custom_design">{lang === 'ar' ? 'نافذة طلب تصميم خاص' : '定制设计弹窗'}</option>
-                <option value="featured">{lang === 'ar' ? 'قسم الهدايا الرائجة' : '爆款推荐分类'}</option>
-                <option value="designer">{lang === 'ar' ? 'مختارات كبار المصممين' : '设计师精选'}</option>
-                <option value="vip">{lang === 'ar' ? 'قسم الـ VIP' : 'VIP专属'}</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
-                <span>{lang === 'ar' ? 'نص المقاس المكتوب على البنر' : '显示尺寸标注'}</span>
-                <span className="text-[10px] text-purple-300 font-mono">1920×600</span>
-              </label>
-              <input
-                type="text"
-                value={dimensionsNote}
-                onChange={(e) => setDimensionsNote(e.target.value)}
-                placeholder="1920 × 600 px (16:5)"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Banner Image Upload & URL */}
+          {/* Banner Image Upload & URL First */}
           <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-slate-200 font-bold flex items-center gap-2">
                 <Upload className="w-4 h-4 text-cyan-400" />
-                <span>{lang === 'ar' ? 'صورة خلفية البنر (رفع ملف أو وضع رابط)' : '横幅背景图片（本地上传或外链）'}</span>
+                <span>{lang === 'ar' ? 'صورة البنر (رفع ملف من جهازك أو وضع رابط مباشر)' : '横幅图片（本地上传或外链）'}</span>
               </label>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-cyan-400 font-medium">
                 {lang === 'ar' ? 'المقاس الموصى به: 1920×600 px' : '推荐分辨率 1920x600'}
               </span>
             </div>
@@ -449,7 +376,7 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
               type="url"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://images.unsplash.com/... أو رابط الصورة"
+              placeholder="https://images.unsplash.com/... أو رابط الصورة المباشر"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
             />
 
@@ -477,6 +404,124 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Banner Redirect Link */}
+          <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 space-y-2">
+            <label className="text-slate-200 font-bold flex items-center gap-2">
+              <ExternalLink className="w-4 h-4 text-cyan-400" />
+              <span>
+                {lang === 'ar' 
+                  ? 'رابط البنر (الرابط الذي يفتح عند الضغط على البنر)' 
+                  : '横幅跳转链接（点击横幅后打开的目标URL）'}
+              </span>
+              <span className="text-[10px] text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-500/20 font-normal">
+                {lang === 'ar' ? 'اختياري' : '可选'}
+              </span>
+            </label>
+            <p className="text-[11px] text-slate-300">
+              {lang === 'ar' 
+                ? 'أي شخص يضغط على هذا البنر في الصفحة الرئيسية سيتم نقله مباشرة إلى هذا الرابط (مثل رابط موقعك، قناة تليجرام، واتساب، أو رابط خارجي).'
+                : '前台用户点击该横幅将直接跳转至此链接（可填网页、WhatsApp、Telegram等任意URL）。'}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={btnLink}
+                onChange={(e) => setBtnLink(e.target.value)}
+                placeholder="https://... أو https://wa.me/966... أو اتركه فارغاً"
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/40 text-white focus:outline-none focus:border-cyan-400 font-mono text-xs"
+              />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setBtnLink('custom_design')}
+                  className="px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] text-slate-300 hover:text-white cursor-pointer"
+                >
+                  {lang === 'ar' ? 'طلب تصميم' : '定制弹窗'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBtnLink('vip')}
+                  className="px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] text-amber-300 hover:text-white cursor-pointer"
+                >
+                  VIP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBtnLink('')}
+                  className="px-2 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                >
+                  {lang === 'ar' ? 'تفريغ' : '清空'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Optional Text Settings Collapsible / Notice */}
+          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-200 font-bold">
+                {lang === 'ar' ? '✍️ نصوص البنر (اختيارية بالكامل - لا يشترط كتابة أي شيء):' : '✍️ 横幅文案（完全可选 - 支持无文字）：'}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {lang === 'ar' ? 'اتركها فارغة لعرض صورة البنر فقط' : '留空即为纯图模式'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  {lang === 'ar' ? 'العنوان الرئيسي (اختياري)' : '横幅主标题（可选）'}
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="مثال: خصومات كبرى على هدايا البث"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  {lang === 'ar' ? 'الشارة العلوية (Badge Tag) (اختياري)' : '顶部角标文字（可选）'}
+                </label>
+                <input
+                  type="text"
+                  value={badge}
+                  onChange={(e) => setBadge(e.target.value)}
+                  placeholder="مثال: عرض خاص · لفترة محدودة"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-400 font-semibold mb-1">
+                {lang === 'ar' ? 'النص التعريفي / الوصف (اختياري)' : '宣传文案 / 副标题（可选）'}
+              </label>
+              <textarea
+                rows={2}
+                value={subtitle}
+                onChange={(e) => setSubtitle(e.target.value)}
+                placeholder="مثال: تسليم فوري وتوثيق رسمي مع ملفات المؤثرات كاملة..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500 leading-relaxed"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 font-semibold mb-1">
+                {lang === 'ar' ? 'نص الزر على البنر (اختياري)' : '按钮文字（可选）'}
+              </label>
+              <input
+                type="text"
+                value={btnText}
+                onChange={(e) => setBtnText(e.target.value)}
+                placeholder="مثال: اضغط هنا للاستكشاف"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-purple-500"
+              />
             </div>
           </div>
 
@@ -549,23 +594,35 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
                 <div className="space-y-1 overflow-hidden">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">
-                      {b.badge || 'بنر معتمد'}
+                      {b.badge || (lang === 'ar' ? 'بنر' : '横幅')}
                     </span>
                     <span className="text-[10px] font-mono text-cyan-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                       📐 {b.dimensionsNote || '1920×600 px'}
                     </span>
+                    {b.btnLink && (
+                      <span className="text-[10px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1 font-mono">
+                        <ExternalLink className="w-3 h-3" />
+                        <span className="truncate max-w-[150px]">{b.btnLink}</span>
+                      </span>
+                    )}
                     <span className="text-[10px] text-slate-500 font-mono">
                       ID: {b.id}
                     </span>
                   </div>
 
                   <h4 className="text-xs sm:text-sm font-bold text-white truncate max-w-md lg:max-w-xl">
-                    {b.title}
+                    {b.title || (
+                      <span className="text-slate-400 italic">
+                        {lang === 'ar' ? '(بنر بدون نص - صورة فقط)' : '(无文本纯图横幅)'}
+                      </span>
+                    )}
                   </h4>
 
-                  <p className="text-[11px] text-slate-400 line-clamp-1 max-w-md lg:max-w-xl">
-                    {b.subtitle}
-                  </p>
+                  {b.subtitle && (
+                    <p className="text-[11px] text-slate-400 line-clamp-1 max-w-md lg:max-w-xl">
+                      {b.subtitle}
+                    </p>
+                  )}
                 </div>
               </div>
 

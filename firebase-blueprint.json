@@ -48,6 +48,22 @@
       "access": "read:all, write:authenticated"
     },
     {
+      "name": "users",
+      "description": "User and staff accounts, authentication credentials, permissions, and active status",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "email", "type": "string" },
+        { "name": "role", "type": "string" },
+        { "name": "status", "type": "string" },
+        { "name": "permissions", "type": "map" },
+        { "name": "whatsapp", "type": "string" },
+        { "name": "password", "type": "string" },
+        { "name": "joinedDate", "type": "string" },
+        { "name": "lastLogin", "type": "string" }
+      ],
+      "access": "read:all, write:authenticated"
+    },
+    {
       "name": "banners",
       "description": "Hero banners managed from the dashboard with dimensions specifications",
       "fields": [

@@ -38,9 +38,10 @@ import {
   Shield,
   Briefcase,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  SlidersHorizontal
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
@@ -52,8 +53,14 @@ import {
   deleteGift, 
   updateEmployee, 
   deleteEmployee, 
+  toggleEmployeeStatus,
+  toggleEmployeeGiftPermission,
   addDelivery, 
-  deleteDelivery 
+  deleteDelivery,
+  saveCategory,
+  deleteCategory,
+  saveSiteSettings,
+  subscribeToSiteSettings
 } from '../lib/firebaseService';
 
 interface DashboardProps {
@@ -71,6 +78,8 @@ interface DashboardProps {
   onStaffLogin?: (employee: EmployeeUser) => void;
   banners?: HeroBannerItem[];
   setBanners?: React.Dispatch<React.SetStateAction<HeroBannerItem[]>>;
+  currentUser?: AuthUser | null;
+  categories?: { id: string; name: string }[];
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -87,11 +96,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   setActiveEmployeeId,
   onStaffLogin,
   banners,
-  setBanners
+  setBanners,
+  currentUser,
+  categories = []
 }) => {
   const t = translations[lang];
 
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide' | 'settings' | 'categories'>('create');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const bannersList = banners || INITIAL_BANNERS;
@@ -111,6 +122,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const staffList = employees || localEmployees;
   const setStaffList = setEmployees || setLocalEmployees;
+
+  // Account filter in Staff/Accounts Tab
+  const [accountFilter, setAccountFilter] = useState<'all' | 'active' | 'inactive' | 'upload_allowed'>('all');
+  const [newStaffCanUpload, setNewStaffCanUpload] = useState<boolean>(true);
 
   const [localActiveEmpId, setLocalActiveEmpId] = useState<string>(() => {
     return localStorage.getItem('jiawei_active_emp_id') || 'EMP-001';
@@ -163,6 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [exclusivePrice, setExclusivePrice] = useState<number>(180);
   const [videoUrl, setVideoUrl] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
+  const [usePosterImage, setUsePosterImage] = useState<boolean>(true);
   const [formatsText, setFormatsText] = useState('SVGA动效文件 (10MB), MP4带声音透明通道 (5.2MB), VAP特效 (12MB), PAG文件 (7MB)');
   const [category, setCategory] = useState<GiftItem['category']>('ancient');
   const [theme, setTheme] = useState('国风仙侠');
@@ -197,6 +213,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [orderPrice, setOrderPrice] = useState<number>(360);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<'wechat' | 'alipay' | 'card' | 'bank' | 'cash'>('card');
   const [orderNotes, setOrderNotes] = useState('');
+
+  // Site Settings State
+  const [siteSettings, setSiteSettings] = useState({
+    siteName: '',
+    siteSlogan: '',
+    logoUrl: ''
+  });
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSiteSettings((settings) => {
+      if (settings) setSiteSettings(settings);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveSiteSettings(siteSettings);
+    setSuccessMessage(lang === 'ar' ? 'تم حفظ إعدادات الموقع بنجاح' : 'Settings saved successfully');
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  // Categories State for UI
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatNameAr, setNewCatNameAr] = useState('');
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    
+    const id = newCatName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    await saveCategory({ id, name: newCatName, nameAr: newCatNameAr || newCatName });
+    
+    setNewCatName('');
+    setNewCatNameAr('');
+    setSuccessMessage(lang === 'ar' ? 'تمت إضافة القسم بنجاح' : 'Category added successfully');
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (id === 'all') return;
+    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا القسم؟' : 'Are you sure you want to delete this category?')) {
+      await deleteCategory(id);
+      setSuccessMessage(lang === 'ar' ? 'تم حذف القسم بنجاح' : 'Category deleted');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
 
   // Print Document Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -320,6 +383,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
+    // Check Gift Upload & Publishing Permission (صلاحية رفع ونشر الهدايا)
+    const canUploadGifts = (activeStaff?.permissions?.giftUploadAndPublish !== false) && (activeStaff?.status !== 'inactive');
+    if (!canUploadGifts) {
+      alert(
+        lang === 'ar'
+          ? '⚠️ تم رفض العملية: ليس لديك صلاحية رفع ونشر الهدايا (Gift Upload & Publishing Permission) أو تم إيقاف هذا الحساب. يرجى مراجعة إدارة المنصة لتفعيل الصلاحية.'
+          : 'Permission Denied: You do not have Gift Upload & Publishing Permission or account is inactive.'
+      );
+      return;
+    }
+
     // Enforce profile completion for first-time uploaders as requested
     if (!activeStaff.isProfileCompleted) {
       setIsProfileModalOpen(true);
@@ -347,7 +421,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           vipPrice: Number(vipPrice),
           exclusivePrice: Number(exclusivePrice),
           videoUrl: videoUrl.trim(),
-          posterUrl: posterUrl.trim() || existing.posterUrl,
+          posterUrl: usePosterImage ? posterUrl.trim() : '',
           formats: parsedFormats,
           category,
           theme: theme.trim() || '精品',
@@ -371,7 +445,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         vipPrice: Number(vipPrice),
         exclusivePrice: Number(exclusivePrice),
         videoUrl: videoUrl.trim(),
-        posterUrl: posterUrl.trim() || 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=800&auto=format&fit=crop&q=80',
+        posterUrl: usePosterImage ? posterUrl.trim() : '',
         formats: parsedFormats,
         tags: ['AI原创', theme.trim() || '精选', '礼物', effectType, '新秀'],
         category,
@@ -469,6 +543,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       password: assignedPassword,
       whatsapp: newStaffWhatsapp.trim(),
       role: newStaffRole,
+      status: 'active',
+      permissions: {
+        giftUploadAndPublish: newStaffCanUpload,
+        manageAccounts: newStaffRole === 'admin',
+        manageBanners: newStaffRole === 'admin',
+        viewOrders: true
+      },
       avatar: newStaffAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
       bio: newStaffBio.trim() || (newStaffRole === 'designer' ? 'مصمم ومعدل مؤثرات بصرية' : 'مشرف إداري بالمنصة'),
       joinedDate: new Date().toISOString().split('T')[0],
@@ -496,13 +577,62 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     setSuccessMessage(
       lang === 'ar'
-        ? `تم إنشاء حساب الموظف [${newEmp.name}] بنجاح، وكلمة المرور: (${assignedPassword}). تم تسجيل دخوله والتبديل إليه لرفع الهدايا باسمه!`
-        : `新员工 [${newEmp.name}] 创建成功 (初始密码: ${assignedPassword})，已登录并切换至该创作者！`
+        ? `تم إنشاء حساب [${newEmp.name}] بنجاح، وكلمة المرور: (${assignedPassword}). ${newStaffCanUpload ? 'مع منح صلاحية رفع ونشر الهدايا.' : 'بدون صلاحية رفع الهدايا.'}`
+        : `新员工 [${newEmp.name}] 创建成功 (初始密码: ${assignedPassword})！`
     );
 
-    // Take them directly to the Upload panel!
-    setActiveTab('create');
-    setTimeout(() => setSuccessMessage(null), 3000);
+    // If granted upload permission, take them to upload panel
+    if (newStaffCanUpload) {
+      setActiveTab('create');
+    }
+    setTimeout(() => setSuccessMessage(null), 3500);
+  };
+
+  // Toggle Account Active / Inactive Status (تفعيل أو إلغاء تفعيل الحساب)
+  const handleToggleStaffStatus = async (empId: string, currentStatus: 'active' | 'inactive') => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    try {
+      await toggleEmployeeStatus(empId, newStatus);
+      setStaffList((prev) => prev.map((e) => e.id === empId ? { ...e, status: newStatus } : e));
+      setSuccessMessage(
+        lang === 'ar'
+          ? `تم تحديث حالة الحساب بنجاح إلى: [${newStatus === 'active' ? 'مفعل ✅' : 'غير مفعل / معطل ❌'}]`
+          : `账号状态已更新为: ${newStatus}`
+      );
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error(err);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء تغيير حالة الحساب' : '更新账号状态失败');
+    }
+  };
+
+  // Toggle Gift Upload & Publishing Permission (تفعيل أو سحب صلاحية رفع ونشر الهدايا)
+  const handleToggleGiftPermission = async (empId: string, currentPerm: boolean) => {
+    const newPerm = !currentPerm;
+    try {
+      await toggleEmployeeGiftPermission(empId, newPerm);
+      setStaffList((prev) => prev.map((e) => e.id === empId ? {
+        ...e,
+        permissions: {
+          ...(e.permissions || {
+            giftUploadAndPublish: false,
+            manageAccounts: false,
+            manageBanners: false,
+            viewOrders: true
+          }),
+          giftUploadAndPublish: newPerm
+        }
+      } : e));
+      setSuccessMessage(
+        lang === 'ar'
+          ? `تم تحديث صلاحية [رفع ونشر الهدايا] للموظف: ${newPerm ? 'ممنوحة ومفعلة بنجاح ✅' : 'مسحوبة وموقوفة ❌'}`
+          : `礼品上传与发布权限已更新: ${newPerm ? '已开启' : '已关闭'}`
+      );
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error(err);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء تعديل صلاحية رفع ونشر الهدايا' : '更新上传权限失败');
+    }
   };
 
   // Delete Staff
@@ -511,7 +641,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       alert(lang === 'ar' ? 'لا يمكن حذف الموظف الوحيد في المنصة.' : '不能删除唯一的员工账号');
       return;
     }
-    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الموظف؟' : '确认删除此员工？')) {
+    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الحساب؟' : '确认删除此账号？')) {
       deleteEmployee(empId);
       setStaffList((prev) => prev.filter((e) => e.id !== empId));
       if (activeStaff.id === empId) {
@@ -531,7 +661,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setVipPrice(gift.vipPrice);
     setExclusivePrice(gift.exclusivePrice);
     setVideoUrl(gift.videoUrl);
-    setPosterUrl(gift.posterUrl);
+    setPosterUrl(gift.posterUrl || '');
+    setUsePosterImage(Boolean(gift.posterUrl && gift.posterUrl.trim()));
     setFormatsText(gift.formats.map((f) => f.name).join(', '));
     setCategory(gift.category);
     setTheme(gift.theme);
@@ -642,7 +773,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }`}
         >
           <UserCheck className="w-4 h-4 text-emerald-400" />
-          <span>{t.staffManagement} ({staffList.length})</span>
+          <span>{lang === 'ar' ? 'إدارة الحسابات والصلاحيات' : t.staffManagement} ({staffList.length})</span>
         </button>
 
         <button
@@ -667,6 +798,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <Globe className="w-4 h-4" />
           <span>{t.cdnGuide}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('categories')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
+            activeTab === 'categories'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-emerald-400" />
+          <span>{lang === 'ar' ? 'إدارة الأقسام' : '分类管理'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all ${
+            activeTab === 'settings'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+          <span>{lang === 'ar' ? 'إعدادات الموقع' : '网站设置'}</span>
         </button>
       </div>
 
@@ -694,6 +849,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
                     {activeStaff.role === 'admin' ? t.adminRole : t.designerRole}
                   </span>
+
+                  {/* Account Status Badge */}
+                  {activeStaff.status === 'inactive' ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                      <span>{lang === 'ar' ? 'الحساب غير مفعل (معطل)' : '账号已停用'}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span>{lang === 'ar' ? 'حساب مفعل' : '账号正常'}</span>
+                    </span>
+                  )}
+
+                  {/* Gift Upload & Publishing Permission Badge */}
+                  {activeStaff.permissions?.giftUploadAndPublish !== false && activeStaff.status !== 'inactive' ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-purple-400" />
+                      <span>{lang === 'ar' ? 'صلاحية رفع ونشر الهدايا: مصرح ومفعل ✅' : '礼品上传权限: 已开启'}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 text-amber-400" />
+                      <span>{lang === 'ar' ? 'صلاحية رفع الهدايا: مسحوبة وموقوفة ⛔' : '礼品上传权限: 已禁用'}</span>
+                    </span>
+                  )}
+
                   {activeStaff.isProfileCompleted ? (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-semibold">
                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -761,6 +943,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Permission Lock Warning Banner (when permission is disabled) */}
+          {(activeStaff.permissions?.giftUploadAndPublish === false || activeStaff.status === 'inactive') && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-red-950/70 via-amber-950/40 to-slate-900 border border-red-500/50 text-slate-200 space-y-2 shadow-lg">
+              <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                <span>
+                  {lang === 'ar'
+                    ? '⚠️ تنبيه الصلاحية: تم إيقاف أو سحب [صلاحية رفع ونشر الهدايا - Gift Upload & Publishing Permission] لهذا الحساب'
+                    : '⚠️ Permission Notice: Gift Upload & Publishing Permission is Revoked for this Account'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {lang === 'ar'
+                  ? activeStaff.status === 'inactive'
+                    ? 'هذا الحساب معطل حالياً من قِبل إدارة المنصة. لا يمكنك رفع ملفات أو إضافة هدايا جديدة حتى يتم تفعيل الحساب من لوحة إدارة الحسابات.'
+                    : 'تم سحب صلاحية رفع ونشر الهدايا من هذا الحساب. يمكنك استعراض الهدايا أو مراجعة المسؤول لتفعيل الصلاحية من لوحة إدارة الحسابات والصلاحيات.'
+                  : 'You do not have permission to upload or publish gifts. Please contact the administrator to enable this permission.'}
+              </p>
+              <div className="pt-1 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('staff')}
+                  className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 flex items-center gap-1.5 transition-colors"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'الانتقال إلى لوحة إدارة الحسابات والصلاحيات' : 'Open Accounts & Permissions'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Main Form Fields */}
@@ -865,17 +1078,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {t.testVideoBtn}
                   </button>
                 </div>
-                <input
-                  type="url"
-                  required
-                  value={videoUrl}
-                  onChange={(e) => {
-                    setVideoUrl(e.target.value);
-                    setVideoTestError(false);
-                  }}
-                  placeholder="https://your-bucket.r2.cloudflarestorage.com/video.mp4"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="url"
+                    required
+                    value={videoUrl}
+                    onChange={(e) => {
+                      setVideoUrl(e.target.value);
+                      setVideoTestError(false);
+                    }}
+                    placeholder="https://your-bucket.r2.cloudflarestorage.com/video.mp4"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                  />
+                  <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
+                    <UploadCloud className="w-4 h-4 text-cyan-400" />
+                    <span>{lang === 'ar' ? 'رفع ملف فيديو' : '上传视频文件'}</span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const blobUrl = URL.createObjectURL(file);
+                          setVideoUrl(blobUrl);
+                          setVideoTestError(false);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
 
                 {/* Quick Presets for User to test without hunting for URLs */}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -895,18 +1127,111 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-              {/* Poster Image URL */}
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  {t.posterUrlInput}
-                </label>
-                <input
-                  type="url"
-                  value={posterUrl}
-                  onChange={(e) => setPosterUrl(e.target.value)}
-                  placeholder="https://images.unsplash.com/photo-xxx?w=800"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
-                />
+              {/* Poster Image / Cover Section with Checkmark (✓) and Cross (✕) Toggle */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-cyan-400" />
+                      <span>{t.posterUrlInput}</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {lang === 'ar'
+                        ? 'اختر [صح ✓] لتعيين صورة غلاف، أو [إكس ✕] لعرض الفيديو نفسه مباشرة كواجهة رئيسية للهدية'
+                        : '选择 [✓ 启用] 设置封面图，或 [✕ 禁用] 直接以视频首帧作为展台主界面'}
+                    </p>
+                  </div>
+
+                  {/* Toggle Controls: Checkmark (✓) vs Cross (✕) */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setUsePosterImage(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        usePosterImage
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                      }`}
+                      title={lang === 'ar' ? 'تفعيل صورة الغلاف المخصصة' : '启用图片封面'}
+                    >
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>{lang === 'ar' ? 'صح (✓) تفعيل الصورة' : '启用图片 (✓)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePosterImage(false);
+                        setPosterUrl('');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        !usePosterImage
+                          ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                      }`}
+                      title={lang === 'ar' ? 'إلغاء الصورة - سيظهر الفيديو فقط في واجهة العرض' : '禁用图片 - 仅显示视频'}
+                    >
+                      <X className="w-4 h-4 stroke-[3]" />
+                      <span>{lang === 'ar' ? 'إكس (✕) فيديو فقط' : '仅视频 (✕)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {usePosterImage ? (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="url"
+                        value={posterUrl}
+                        onChange={(e) => setPosterUrl(e.target.value)}
+                        placeholder="https://images.unsplash.com/photo-xxx?w=800"
+                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                      />
+                      <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
+                        <UploadCloud className="w-4 h-4 text-cyan-400" />
+                        <span>{lang === 'ar' ? 'رفع صورة' : '上传图片'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                if (typeof reader.result === 'string') {
+                                  setPosterUrl(reader.result);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {lang === 'ar'
+                        ? 'ستظهر صورة الغلاف كواجهة أولية، وعند تمرير الماوس فوق الهدية يتم تشغيل الفيديو.'
+                        : '封面图为常态展示，悬停时转换为视频播放。'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900 to-slate-950 border border-cyan-500/40 flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 mt-0.5">
+                      <Video className="w-4 h-4" />
+                    </div>
+                    <div className="text-xs leading-relaxed text-slate-300">
+                      <strong className="text-cyan-300 block mb-0.5">
+                        {lang === 'ar' ? '✓ تم تفعيل وضع الفيديو فقط (✕ إخفاء الصورة تماماً):' : '已开启仅视频模式 (✕ 隐藏封面图)：'}
+                      </strong>
+                      <span>
+                        {lang === 'ar'
+                          ? 'لن تظهر أي صورة غلاف، وسيأخذ الفيديو نفسه نفس الواجهة الرئيسية للهدية في شاشة العرض وبطاقة المتجر مباشرة.'
+                          : '卡片将完全不显示任何图片，直接呈现视频首帧作为主界面并自动生效。'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Formats included (صيغ الهدية: SVGA, MP4, VAP, PAG, etc.) */}
@@ -934,13 +1259,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     onChange={(e) => setCategory(e.target.value as any)}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
                   >
-                    <option value="ancient">{t.catAncient}</option>
-                    <option value="romance">{t.catRomance}</option>
-                    <option value="tech">{t.catTech}</option>
-                    <option value="festival">{t.catFestival}</option>
-                    <option value="luxury">{t.catLuxury}</option>
-                    <option value="fun">{t.catFun}</option>
-                    <option value="character">{t.catCharacter}</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{lang === 'ar' && cat.nameAr ? cat.nameAr : cat.name}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -1010,13 +1331,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Action Buttons */}
               <div className="pt-3 flex items-center gap-3">
-                <button
-                  type="submit"
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-cyan-500/20 transition-all active:scale-95 flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{editingId ? (lang === 'ar' ? 'حفظ التعديلات' : '保存修改') : t.submitGiftBtn}</span>
-                </button>
+                {(() => {
+                  const canUpload = (activeStaff?.permissions?.giftUploadAndPublish !== false) && (activeStaff?.status !== 'inactive');
+                  return (
+                    <button
+                      type="submit"
+                      disabled={!canUpload}
+                      className={`px-6 py-3 rounded-xl text-xs sm:text-sm font-extrabold shadow-lg transition-all flex items-center gap-2 ${
+                        canUpload
+                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-cyan-500/20 active:scale-95 cursor-pointer'
+                          : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>
+                        {!canUpload
+                          ? (lang === 'ar' ? '⚠️ صلاحية رفع الهدايا موقوفة لهذا الحساب' : '无上传权限')
+                          : (editingId ? (lang === 'ar' ? 'حفظ التعديلات' : '保存修改') : t.submitGiftBtn)
+                        }
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 {editingId && (
                   <button
@@ -1087,8 +1423,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex justify-between">
                   <span>{lang === 'ar' ? 'المصدر المضيف:' : '视频数据源:'}</span>
                   <span className="text-cyan-300 truncate max-w-[140px] font-mono">
-                    {videoUrl ? new URL(videoUrl).hostname : 'External CDN'}
+                    {videoUrl ? (videoUrl.startsWith('blob:') ? 'Local File' : new URL(videoUrl).hostname) : 'External CDN'}
                   </span>
+                </div>
+              </div>
+
+              {/* Store Card Face Preview (معاينة واجهة العرض في المتجر) */}
+              <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-200">
+                  <span>{lang === 'ar' ? 'واجهة العرض في المتجر:' : '商场卡片展示形态:'}</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    !usePosterImage || !posterUrl
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  }`}>
+                    {!usePosterImage || !posterUrl
+                      ? (lang === 'ar' ? '🎬 واجهة الفيديو مباشرة (فيديو فقط)' : '仅视频直出')
+                      : (lang === 'ar' ? '🖼️ صورة غلاف مع تشغيل بالماوس' : '封面图+悬停动效')}
+                  </span>
+                </div>
+
+                <div className="relative aspect-[4/5] w-full max-w-[200px] mx-auto rounded-xl overflow-hidden bg-slate-950 border border-slate-700 shadow-lg flex items-center justify-center">
+                  {usePosterImage && posterUrl ? (
+                    <img
+                      src={posterUrl}
+                      alt="Cover Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : videoUrl ? (
+                    <video
+                      key={videoUrl}
+                      src={`${videoUrl}#t=0.001`}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-[11px] p-3 text-center">
+                      <Video className="w-6 h-6 mb-1 opacity-40 text-cyan-400" />
+                      <span>{lang === 'ar' ? 'ضع رابط الفيديو ليأخذ الواجهة هنا' : '输入视频直链'}</span>
+                    </div>
+                  )}
+
+                  <div className="absolute bottom-2 left-2 right-2 px-2 py-1 rounded bg-slate-950/85 backdrop-blur text-[10px] text-white truncate font-medium text-center border border-slate-800">
+                    {title || (lang === 'ar' ? 'اسم الهدية' : '礼物名称')}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1144,11 +1525,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <tr key={g.id} className="hover:bg-slate-900/50 transition-colors">
                     <td className="p-3">
                       <div className="flex items-center gap-2.5">
-                        <img
-                          src={g.posterUrl}
-                          alt={g.title}
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-700"
-                        />
+                        {g.posterUrl ? (
+                          <img
+                            src={g.posterUrl}
+                            alt={g.title}
+                            className="w-10 h-10 rounded-lg object-cover border border-slate-700"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-black border border-cyan-500/40 flex items-center justify-center overflow-hidden">
+                            <video src={g.videoUrl ? `${g.videoUrl}#t=0.001` : undefined} muted playsInline className="w-full h-full object-cover" />
+                          </div>
+                        )}
                         <span className="font-mono text-cyan-400 text-[11px]">{g.id}</span>
                       </div>
                     </td>
@@ -1571,396 +1958,602 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: STAFF & CREATORS MANAGEMENT (Part 3 of user request) */}
-      {activeTab === 'staff' && (
-        <div className="space-y-6">
-          {/* Header & Stats Banner */}
-          <div className="p-5 rounded-2xl bg-[#111520] border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-cyan-400" />
-                <h2 className="text-lg font-bold text-white">{t.staffManagement}</h2>
+      {/* TAB 3: STAFF & CREATORS MANAGEMENT (لوحة إدارة الحسابات والصلاحيات) */}
+      {activeTab === 'staff' && (() => {
+        const activeAccountsCount = staffList.filter((e) => (e.status || 'active') === 'active').length;
+        const inactiveAccountsCount = staffList.filter((e) => e.status === 'inactive').length;
+        const uploadAllowedCount = staffList.filter((e) => (e.permissions?.giftUploadAndPublish !== false) && (e.status !== 'inactive')).length;
+
+        const filteredStaffList = staffList.filter((e) => {
+          if (accountFilter === 'active') return (e.status || 'active') === 'active';
+          if (accountFilter === 'inactive') return e.status === 'inactive';
+          if (accountFilter === 'upload_allowed') return (e.permissions?.giftUploadAndPublish !== false) && (e.status !== 'inactive');
+          return true;
+        });
+
+        return (
+          <div className="space-y-6">
+            {/* Header & Stats Banner */}
+            <div className="p-5 rounded-2xl bg-[#111520] border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-cyan-400" />
+                  <h2 className="text-lg font-bold text-white">
+                    {lang === 'ar' ? 'لوحة تفعيل وإدارة الحسابات والصلاحيات' : 'Account & Permissions Management'}
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                  {lang === 'ar'
+                    ? 'التحكم الكامل في حسابات المنصة: تفعيل أو تعطيل الحسابات، وإدارة [صلاحية رفع ونشر الهدايا - Gift Upload & Publishing Permission] لكل حساب بشكل مستقل، وتعيين بيانات الاتصال بالواتساب.'
+                    : 'Manage platform accounts, toggle active/inactive status, and grant/revoke Gift Upload & Publishing Permissions independently.'}
+                </p>
               </div>
-              <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                {lang === 'ar'
-                  ? 'إدارة حسابات المصممين والموظفين بالمنصة. يمكنك إنشاء حساب موظف جديد وتحديد رقم الواتساب لربطه تلقائياً بالهدايا، أو التبديل بين المصممين للرفع باسمهم.'
-                  : '管理平台创作者与员工账号。创建新账号并绑定WhatsApp号码，上传的素材将自动归属于该员工，买家可直接一键咨询。'}
-              </p>
+
+              {/* Real-time Status Metric Badges */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full md:w-auto">
+                <div className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-center">
+                  <div className="text-[10px] text-slate-400 font-medium">{lang === 'ar' ? 'إجمالي الحسابات' : 'Total Accounts'}</div>
+                  <div className="text-sm sm:text-base font-black text-cyan-300 font-mono">{staffList.length}</div>
+                </div>
+                <div className="px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center">
+                  <div className="text-[10px] text-emerald-400 font-medium">{lang === 'ar' ? 'حسابات مفعلة' : 'Active'}</div>
+                  <div className="text-sm sm:text-base font-black text-emerald-300 font-mono">{activeAccountsCount}</div>
+                </div>
+                <div className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-500/30 text-center">
+                  <div className="text-[10px] text-red-400 font-medium">{lang === 'ar' ? 'معطلة / موقوفة' : 'Inactive'}</div>
+                  <div className="text-sm sm:text-base font-black text-red-300 font-mono">{inactiveAccountsCount}</div>
+                </div>
+                <div className="px-3 py-2 rounded-xl bg-purple-950/40 border border-purple-500/30 text-center">
+                  <div className="text-[10px] text-purple-300 font-medium">{lang === 'ar' ? 'مصرح بالرفع' : 'Can Upload'}</div>
+                  <div className="text-sm sm:text-base font-black text-purple-300 font-mono">{uploadAllowedCount}</div>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-center">
-                <div className="text-[10px] text-slate-400 font-medium">{t.totalStaff}</div>
-                <div className="text-base font-black text-cyan-300 font-mono">{staffList.length}</div>
-              </div>
-              <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-center">
-                <div className="text-[10px] text-slate-400 font-medium">{t.totalGiftsUploaded}</div>
-                <div className="text-base font-black text-purple-300 font-mono">
-                  {staffList.reduce((acc, curr) => acc + (curr.giftsCount || 0), 0) + gifts.length}
-                </div>
-              </div>
-              <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-center">
-                <div className="text-[10px] text-slate-400 font-medium">{t.totalSalesCount}</div>
-                <div className="text-base font-black text-emerald-400 font-mono">{deliveries.length}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Create New Staff Form */}
-            <div className="lg:col-span-5 bg-[#111520] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                <UserPlus className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold text-white">{t.createStaffAccount}</h3>
-              </div>
-
-              <form onSubmit={handleCreateStaff} className="space-y-4 text-xs">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">
-                    {t.fullName} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newStaffName}
-                    onChange={(e) => setNewStaffName(e.target.value)}
-                    placeholder="مثال: يوسف ديزاينر / سارة فلكس"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
-                  />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Create New Staff Form */}
+              <div className="lg:col-span-5 bg-[#111520] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <UserPlus className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-sm font-bold text-white">
+                    {lang === 'ar' ? 'إنشاء حساب جديد وتعيين الصلاحيات' : t.createStaffAccount}
+                  </h3>
                 </div>
 
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{t.whatsappNumber} *</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">مع مفتاح الدولة (مثل +966...)</span>
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={newStaffWhatsapp}
-                    onChange={(e) => setNewStaffWhatsapp(e.target.value)}
-                    placeholder="+966551234567 أو +201012345678"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500 dir-ltr text-left"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <form onSubmit={handleCreateStaff} className="space-y-4 text-xs">
                   <div>
                     <label className="block text-slate-300 font-bold mb-1">
-                      {t.staffRole}
+                      {t.fullName} *
                     </label>
-                    <select
-                      value={newStaffRole}
-                      onChange={(e) => setNewStaffRole(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
-                    >
-                      <option value="designer">{t.designerRole}</option>
-                      <option value="admin">{t.adminRole}</option>
-                    </select>
+                    <input
+                      type="text"
+                      required
+                      value={newStaffName}
+                      onChange={(e) => setNewStaffName(e.target.value)}
+                      placeholder="مثال: يوسف ديزاينر / سارة فلكس"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
+                    />
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      {lang === 'ar' ? 'البريد الإلكتروني للدخول *' : '员工登录邮箱 *'}
+                    <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{t.whatsappNumber} *</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">مع مفتاح الدولة (مثل +966...)</span>
                     </label>
                     <input
-                      type="email"
+                      type="tel"
                       required
-                      value={newStaffEmail}
-                      onChange={(e) => setNewStaffEmail(e.target.value)}
-                      placeholder="designer@streamgifts.com"
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
+                      value={newStaffWhatsapp}
+                      onChange={(e) => setNewStaffWhatsapp(e.target.value)}
+                      placeholder="+966551234567 أو +201012345678"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500 dir-ltr text-left"
                     />
                   </div>
-                </div>
 
-                {/* Password for Employee Login */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-slate-300 font-bold flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>{lang === 'ar' ? 'كلمة المرور للموظف (Password) *' : '员工登录密码 *'}</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const randomPass = 'JW' + Math.floor(1000 + Math.random() * 9000);
-                        setNewStaffPassword(randomPass);
-                      }}
-                      className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium"
-                    >
-                      {lang === 'ar' ? '⚡ توليد كلمة سر عشوائية' : '⚡ 随机生成'}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type={showStaffPassword ? 'text' : 'password'}
-                      required
-                      value={newStaffPassword}
-                      onChange={(e) => setNewStaffPassword(e.target.value)}
-                      placeholder="أدخل كلمة مرور للموظف"
-                      className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowStaffPassword(!showStaffPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                      tabIndex={-1}
-                    >
-                      {showStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    {lang === 'ar' 
-                      ? 'يستخدمها الموظف لتسجيل الدخول إلى حسابه في المنصة والوصول للوحة التحكم.'
-                      : '该密码用于员工在前端登录界面进入后台并绑定创作者信息。'}
-                  </p>
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">
+                        {t.staffRole}
+                      </label>
+                      <select
+                        value={newStaffRole}
+                        onChange={(e) => setNewStaffRole(e.target.value as any)}
+                        className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="designer">{t.designerRole}</option>
+                        <option value="admin">{t.adminRole}</option>
+                        <option value="employee">{lang === 'ar' ? 'موظف دعم / عمليات' : 'Employee'}</option>
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">
-                    {lang === 'ar' ? 'صورة الرمز الشخصي (Avatar):' : '头像选择:'}
-                  </label>
-                  <div className="flex items-center gap-2 mb-2">
-                    {[
-                      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
-                      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80',
-                      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=160&auto=format&fit=crop&q=80',
-                      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&auto=format&fit=crop&q=80'
-                    ].map((img, idx) => (
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">
+                        {lang === 'ar' ? 'البريد الإلكتروني للدخول *' : '员工登录邮箱 *'}
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={newStaffEmail}
+                        onChange={(e) => setNewStaffEmail(e.target.value)}
+                        placeholder="designer@streamgifts.com"
+                        className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password for Employee Login */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-slate-300 font-bold flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{lang === 'ar' ? 'كلمة المرور للدخول (Password) *' : '员工登录密码 *'}</span>
+                      </label>
                       <button
-                        key={idx}
                         type="button"
-                        onClick={() => setNewStaffAvatar(img)}
-                        className={`relative rounded-xl overflow-hidden border-2 transition-transform ${
-                          newStaffAvatar === img ? 'border-cyan-400 scale-105 shadow-md shadow-cyan-500/30' : 'border-slate-700 opacity-60 hover:opacity-100'
+                        onClick={() => {
+                          const randomPass = 'JW' + Math.floor(1000 + Math.random() * 9000);
+                          setNewStaffPassword(randomPass);
+                        }}
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium"
+                      >
+                        {lang === 'ar' ? '⚡ توليد كلمة سر عشوائية' : '⚡ 随机生成'}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showStaffPassword ? 'text' : 'password'}
+                        required
+                        value={newStaffPassword}
+                        onChange={(e) => setNewStaffPassword(e.target.value)}
+                        placeholder="أدخل كلمة مرور للموظف"
+                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStaffPassword(!showStaffPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        tabIndex={-1}
+                      >
+                        {showStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Independent Permission Switch: Gift Upload & Publishing Permission */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>{lang === 'ar' ? 'صلاحية رفع ونشر الهدايا' : 'Gift Upload Permission'}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {lang === 'ar'
+                            ? 'تمكين هذا الحساب من رفع ملفات ومؤثرات الهدايا ونشرها على المنصة فوراً'
+                            : 'Allow this user to upload and publish gifts immediately'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewStaffCanUpload(!newStaffCanUpload)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          newStaffCanUpload ? 'bg-cyan-500' : 'bg-slate-700'
                         }`}
                       >
-                        <img src={img} alt="preset" className="w-10 h-10 object-cover" />
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            newStaffCanUpload ? (lang === 'ar' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                          }`}
+                        />
                       </button>
-                    ))}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-slate-400">{lang === 'ar' ? 'الحالة المبدئية عند الإنشاء:' : 'Initial Status:'}</span>
+                      <span className={`font-bold ${newStaffCanUpload ? 'text-cyan-300' : 'text-amber-400'}`}>
+                        {newStaffCanUpload
+                          ? (lang === 'ar' ? 'مصرح له بالرفع والنشر ✅' : 'Allowed')
+                          : (lang === 'ar' ? 'ممنوع من الرفع (مسحوبة) ⛔' : 'Disabled')}
+                      </span>
+                    </div>
                   </div>
-                  <input
-                    type="url"
-                    value={newStaffAvatar}
-                    onChange={(e) => setNewStaffAvatar(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-[11px] text-slate-300 font-mono focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">
-                    {t.bioSpecialty}
-                  </label>
-                  <input
-                    type="text"
-                    value={newStaffBio}
-                    onChange={(e) => setNewStaffBio(e.target.value)}
-                    placeholder="مثال: متخصص في مؤثرات التيك توك و SVGA ثلاثية الأبعاد"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      {lang === 'ar' ? 'صورة الرمز الشخصي (Avatar):' : '头像选择:'}
+                    </label>
+                    <div className="flex items-center gap-2 mb-2">
+                      {[
+                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=160&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&auto=format&fit=crop&q=80'
+                      ].map((img, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setNewStaffAvatar(img)}
+                          className={`relative rounded-xl overflow-hidden border-2 transition-transform ${
+                            newStaffAvatar === img ? 'border-cyan-400 scale-105 shadow-md shadow-cyan-500/30' : 'border-slate-700 opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={img} alt="preset" className="w-10 h-10 object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="url"
+                      value={newStaffAvatar}
+                      onChange={(e) => setNewStaffAvatar(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-[11px] text-slate-300 font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
 
-                <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                  <p className="text-cyan-300 font-bold">
-                    {lang === 'ar' ? '✨ خطوة لمرة واحدة فقط:' : '✨ 一次性设置:'}
-                  </p>
-                  <p>
-                    {lang === 'ar'
-                      ? 'عند إنشاء هذا الحساب، ستتحول لوحة التحكم إليه تلقائياً لرفع الهدايا، ولن يحتاج لإعادة كتابة اسمه أو واتسابه أبداً.'
-                      : '创建账号后可立即发布素材，无需重复输入个人与联络信息。'}
-                  </p>
-                </div>
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      {t.bioSpecialty}
+                    </label>
+                    <input
+                      type="text"
+                      value={newStaffBio}
+                      onChange={(e) => setNewStaffBio(e.target.value)}
+                      placeholder="مثال: متخصص في مؤثرات التيك توك و SVGA ثلاثية الأبعاد"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'إنشاء حساب موظف وبدء الرفع مباشرة' : '创建员工并立即发布素材'}</span>
-                </button>
-              </form>
-            </div>
-
-            {/* Right Column: Staff Members List */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-cyan-400" />
-                  <span>{t.staffList} ({staffList.length})</span>
-                </h3>
-                <span className="text-[11px] text-slate-400">
-                  {lang === 'ar' ? 'انقر على "التبديل والرفع" للرفع باسم أي مصمم' : '点击切换按钮即可代表该创作者上传'}
-                </span>
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'إنشاء وتفعيل الحساب فوراً' : '创建员工并完成配置'}</span>
+                  </button>
+                </form>
               </div>
 
-              <div className="space-y-3">
-                {staffList.map((emp) => {
-                  const isActive = emp.id === activeStaff.id;
-                  return (
-                    <div
-                      key={emp.id}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        isActive
-                          ? 'bg-gradient-to-r from-slate-900 via-[#13192a] to-cyan-950/40 border-cyan-500/70 shadow-lg shadow-cyan-500/10'
-                          : 'bg-[#111520] border-slate-800 hover:border-slate-700'
+              {/* Right Column: Staff Members List & Permission Toggles */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-cyan-400" />
+                    <h3 className="text-sm font-bold text-white">
+                      {lang === 'ar' ? 'قائمة الحسابات والصلاحيات' : t.staffList} ({filteredStaffList.length})
+                    </h3>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setAccountFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                        accountFilter === 'all'
+                          ? 'bg-cyan-500 text-black font-bold shadow-sm'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-start gap-3.5">
-                          <div className="relative shrink-0">
-                            <img
-                              src={emp.avatar}
-                              alt={emp.name}
-                              className={`w-12 h-12 rounded-2xl object-cover border-2 ${
-                                isActive ? 'border-cyan-400 shadow-md' : 'border-slate-700'
-                              }`}
-                            />
-                            {isActive && (
-                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-400 border-2 border-[#111520] flex items-center justify-center">
-                                <Check className="w-2.5 h-2.5 text-black stroke-[3]" />
-                              </span>
-                            )}
-                          </div>
+                      {lang === 'ar' ? 'الكل' : 'All'} ({staffList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountFilter('active')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                        accountFilter === 'active'
+                          ? 'bg-emerald-500 text-black font-bold shadow-sm'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {lang === 'ar' ? 'المفعلة' : 'Active'} ({activeAccountsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountFilter('inactive')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                        accountFilter === 'inactive'
+                          ? 'bg-red-500 text-white font-bold shadow-sm'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {lang === 'ar' ? 'المعطلة' : 'Inactive'} ({inactiveAccountsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountFilter('upload_allowed')}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                        accountFilter === 'upload_allowed'
+                          ? 'bg-purple-500 text-white font-bold shadow-sm'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {lang === 'ar' ? 'مصرح بالرفع' : 'Can Upload'} ({uploadAllowedCount})
+                    </button>
+                  </div>
+                </div>
 
-                          <div className="space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-black text-white">{emp.name}</span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
-                                {emp.role === 'admin' ? t.adminRole : t.designerRole}
-                              </span>
-                              {isActive && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                                  <span>{lang === 'ar' ? 'الحساب النشط حالياً' : '当前使用中'}</span>
-                                </span>
-                              )}
-                            </div>
+                <div className="space-y-3.5">
+                  {filteredStaffList.length === 0 ? (
+                    <div className="p-8 text-center rounded-2xl bg-[#111520] border border-slate-800 text-slate-400 text-xs">
+                      {lang === 'ar' ? 'لا توجد حسابات مطابقة للتصفية المختارة' : 'No accounts matching the filter.'}
+                    </div>
+                  ) : (
+                    filteredStaffList.map((emp) => {
+                      const isActiveAccount = (emp.status || 'active') === 'active';
+                      const hasUploadPermission = (emp.permissions?.giftUploadAndPublish !== false) && isActiveAccount;
+                      const isCurrentActive = emp.id === activeStaff.id;
 
-                            {emp.bio && (
-                              <p className="text-xs text-slate-300">{emp.bio}</p>
-                            )}
+                      return (
+                        <div
+                          key={emp.id}
+                          className={`p-4 rounded-2xl border transition-all ${
+                            isCurrentActive
+                              ? 'bg-gradient-to-r from-slate-900 via-[#13192a] to-cyan-950/40 border-cyan-500/70 shadow-lg shadow-cyan-500/10'
+                              : 'bg-[#111520] border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="space-y-3.5">
+                            {/* Top row: Avatar + Identity + Status Badges */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-start gap-3.5">
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={emp.avatar}
+                                    alt={emp.name}
+                                    className={`w-12 h-12 rounded-2xl object-cover border-2 ${
+                                      isCurrentActive
+                                        ? 'border-cyan-400 shadow-md'
+                                        : isActiveAccount
+                                        ? 'border-slate-700'
+                                        : 'border-red-500/50 opacity-60'
+                                    }`}
+                                  />
+                                  {isCurrentActive && (
+                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-400 border-2 border-[#111520] flex items-center justify-center">
+                                      <Check className="w-2.5 h-2.5 text-black stroke-[3]" />
+                                    </span>
+                                  )}
+                                </div>
 
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                              <div className="flex items-center gap-1">
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                <span className="font-mono text-emerald-400 font-semibold dir-ltr">{emp.whatsapp}</span>
-                                {emp.whatsapp && (
-                                  <a
-                                    href={`https://wa.me/${emp.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`مرحباً ${emp.name}، استفسار بخصوص مؤثرات المتجر`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="ml-1 text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1"
-                                    title={t.whatsappChat}
-                                  >
-                                    <span>واتساب</span>
-                                    <ExternalLink className="w-2.5 h-2.5" />
-                                  </a>
-                                )}
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-black text-white">{emp.name}</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
+                                      {emp.role === 'admin' ? t.adminRole : emp.role === 'designer' ? t.designerRole : 'موظف'}
+                                    </span>
+
+                                    {/* Active Account Status Badge */}
+                                    {isActiveAccount ? (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                        <span>{lang === 'ar' ? 'حساب مفعل' : 'Active'}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                        <span>{lang === 'ar' ? 'حساب معطل ⏸️' : 'Inactive'}</span>
+                                      </span>
+                                    )}
+
+                                    {isCurrentActive && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                                        <span>{lang === 'ar' ? 'الحساب المختار حالياً' : 'Selected'}</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {emp.bio && (
+                                    <p className="text-xs text-slate-300">{emp.bio}</p>
+                                  )}
+
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                                    <div className="flex items-center gap-1">
+                                      <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span className="font-mono text-emerald-400 font-semibold dir-ltr">{emp.whatsapp}</span>
+                                      {emp.whatsapp && (
+                                        <a
+                                          href={`https://wa.me/${emp.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`مرحباً ${emp.name}، استفسار بخصوص مؤثرات المتجر`)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="ml-1 text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1"
+                                          title={t.whatsappChat}
+                                        >
+                                          <span>واتساب</span>
+                                          <ExternalLink className="w-2.5 h-2.5" />
+                                        </a>
+                                      )}
+                                    </div>
+
+                                    <span>•</span>
+                                    <span>{t.uploadedGifts}: <strong className="text-white">{emp.giftsCount || 0}</strong></span>
+                                  </div>
+                                </div>
                               </div>
 
-                              <span>•</span>
-                              <span>{t.uploadedGifts}: <strong className="text-white">{emp.giftsCount || 0}</strong></span>
-                              <span>•</span>
-                              <span>{t.salesDone}: <strong className="text-emerald-400">{emp.totalSales || 0}</strong></span>
+                              {/* Direct Status Control Button (تفعيل / تعطيل الحساب) */}
+                              <div className="flex items-center gap-2 self-start sm:self-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffStatus(emp.id, isActiveAccount ? 'inactive' : 'active')}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    isActiveAccount
+                                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
+                                      : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm'
+                                  }`}
+                                  title={isActiveAccount ? 'تعطيل الحساب' : 'تفعيل الحساب'}
+                                >
+                                  {isActiveAccount ? (
+                                    <>
+                                      <span>تعطيل الحساب ⏸️</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>تفعيل الحساب ▶️</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Permission Management Box (صلاحية رفع ونشر الهدايا - Gift Upload & Publishing Permission) */}
+                            <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                                  <span className="text-xs font-bold text-white">
+                                    {lang === 'ar' ? 'صلاحية رفع ونشر الهدايا (Gift Upload Permission):' : 'Gift Upload Permission:'}
+                                  </span>
+                                  {hasUploadPermission ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                                      {lang === 'ar' ? 'مفعلة ومصرح له ✅' : 'Granted'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                                      {lang === 'ar' ? 'مسحوبة / غير مصرح ⛔' : 'Revoked'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400">
+                                  {hasUploadPermission
+                                    ? (lang === 'ar' ? 'يستطيع هذا الحساب رفع مقاطع الهدايا ونشرها للبيع على الموقع مباشرة.' : 'User can upload and publish new gifts to store.')
+                                    : (lang === 'ar' ? 'تم سحب الصلاحية؛ لن يستطيع هذا الحساب إضافة أو نشر أي هدايا جديدة.' : 'User cannot upload gifts.')}
+                                </p>
+                              </div>
+
+                              {/* Toggle Permission Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleGiftPermission(emp.id, emp.permissions?.giftUploadAndPublish !== false)}
+                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                                  emp.permissions?.giftUploadAndPublish !== false
+                                    ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                                    : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border-purple-500/40'
+                                }`}
+                              >
+                                {emp.permissions?.giftUploadAndPublish !== false ? (
+                                  <>
+                                    <span>سحب صلاحية الرفع 🚫</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>منح صلاحية الرفع ✅</span>
+                                  </>
+                                )}
+                              </button>
                             </div>
 
                             {/* Staff Login Credentials (Email & Password) */}
-                            <div className="pt-2 mt-1 border-t border-slate-800/80 flex flex-wrap items-center gap-3 text-[11px]">
-                              <div className="flex items-center gap-1 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
-                                <Mail className="w-3 h-3 text-cyan-400" />
-                                <span className="text-slate-400">البريد:</span>
-                                <span className="text-slate-200 font-mono font-medium">{emp.email}</span>
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                                  <Mail className="w-3 h-3 text-cyan-400" />
+                                  <span className="text-slate-400">البريد:</span>
+                                  <span className="text-slate-200 font-mono font-medium">{emp.email}</span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                                  <Lock className="w-3 h-3 text-amber-400" />
+                                  <span className="text-slate-400">كلمة المرور:</span>
+                                  <span className="text-amber-300 font-mono font-bold">
+                                    {visibleStaffPasswords[emp.id] ? (emp.password || '123456') : '••••••'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVisibleStaffPasswords(prev => ({ ...prev, [emp.id]: !prev[emp.id] }));
+                                    }}
+                                    className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                                    title="إظهار / إخفاء"
+                                  >
+                                    {visibleStaffPasswords[emp.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(emp.password || '123456');
+                                      alert(lang === 'ar' ? 'تم نسخ كلمة المرور' : '密码已复制');
+                                    }}
+                                    className="text-slate-400 hover:text-cyan-400 p-0.5 cursor-pointer"
+                                    title="نسخ كلمة السر"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
-                                <Lock className="w-3 h-3 text-amber-400" />
-                                <span className="text-slate-400">كلمة المرور:</span>
-                                <span className="text-amber-300 font-mono font-bold">
-                                  {visibleStaffPasswords[emp.id] ? (emp.password || '123456') : '••••••'}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setVisibleStaffPasswords(prev => ({ ...prev, [emp.id]: !prev[emp.id] }));
-                                  }}
-                                  className="text-slate-400 hover:text-white p-0.5"
-                                  title="إظهار / إخفاء"
-                                >
-                                  {visibleStaffPasswords[emp.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(emp.password || '123456');
-                                    alert(lang === 'ar' ? 'تم نسخ كلمة المرور' : '密码已复制');
-                                  }}
-                                  className="text-slate-400 hover:text-cyan-400 p-0.5"
-                                  title="نسخ كلمة السر"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
+                              {/* Bottom Actions: Select For Uploading + Delete */}
+                              <div className="flex items-center gap-2">
+                                {isCurrentActive ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!hasUploadPermission) {
+                                        alert(lang === 'ar' ? 'تنبيه: هذا الحساب ليس لديه صلاحية رفع الهدايا حالياً. يرجى تفعيل الصلاحية أولاً.' : 'Upload permission is disabled.');
+                                        return;
+                                      }
+                                      setAuthorName(emp.name);
+                                      setActiveTab('create');
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 flex items-center gap-1.5 shadow cursor-pointer"
+                                  >
+                                    <PlusCircle className="w-3.5 h-3.5" />
+                                    <span>{lang === 'ar' ? 'رفع هدية بهذا الحساب' : '发布素材'}</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!isActiveAccount) {
+                                        alert(lang === 'ar' ? 'تنبيه: هذا الحساب معطل حالياً. يرجى تفعيل الحساب أولاً للتمكن من استخدامه.' : 'Account is inactive.');
+                                        return;
+                                      }
+                                      handleSwitchStaff(emp.id);
+                                      setAuthorName(emp.name);
+                                      if (onStaffLogin) {
+                                        onStaffLogin(emp);
+                                      }
+                                      if (hasUploadPermission) {
+                                        setActiveTab('create');
+                                      }
+                                    }}
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                      isActiveAccount
+                                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                                        : 'bg-slate-900 text-slate-500 border-slate-800 opacity-60'
+                                    }`}
+                                  >
+                                    <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                                    <span>{lang === 'ar' ? 'تحديد الحساب للرفع' : '切换为此账号'}</span>
+                                  </button>
+                                )}
+
+                                {staffList.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStaff(emp.id)}
+                                    className="p-1.5 rounded-xl hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-colors cursor-pointer"
+                                    title={t.deleteStaffBtn}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
                         </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                          {isActive ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAuthorName(emp.name);
-                                setActiveTab('create');
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 flex items-center gap-1.5 shadow"
-                            >
-                              <PlusCircle className="w-3.5 h-3.5" />
-                              <span>{lang === 'ar' ? 'رفع هدية باسمه' : '发布素材'}</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleSwitchStaff(emp.id);
-                                setAuthorName(emp.name);
-                                if (onStaffLogin) {
-                                  onStaffLogin(emp);
-                                }
-                                setActiveTab('create');
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-colors"
-                            >
-                              <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-                              <span>{lang === 'ar' ? 'تسجيل الدخول والرفع' : '切换为此账号并发布'}</span>
-                            </button>
-                          )}
-
-                          {staffList.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStaff(emp.id)}
-                              className="p-2 rounded-xl hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-colors"
-                              title={t.deleteStaffBtn}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* PRINT DOCUMENT MODAL (For Invoice, Certificate, Delivery Slip, or Sales Report) */}
       <PrintDocumentModal
@@ -2160,6 +2753,115 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </p>
             </div>
           </div>
+        </div>
+      )}
+      {/* TAB 6: CATEGORIES MANAGEMENT */}
+      {activeTab === 'categories' && (
+        <div className="bg-[#111520] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5 text-xs text-slate-300">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Layers className="w-5 h-5 text-emerald-400" />
+            <span>{lang === 'ar' ? 'إدارة أقسام الموقع (Categories)' : '分类管理'}</span>
+          </h3>
+
+          <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              required
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder={lang === 'ar' ? 'اسم القسم (مثال: حيوانات أليفة)' : '分类名称'}
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="submit"
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'إضافة قسم جديد' : '添加分类'}</span>
+            </button>
+          </form>
+
+          <div className="space-y-2 mt-4">
+            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div className="font-bold text-slate-300">{lang === 'ar' ? 'القسم العام (الأساسي)' : '通用分类'}</div>
+              <span className="text-[10px] text-slate-500">{lang === 'ar' ? 'لا يمكن حذفه' : '不可删除'}</span>
+            </div>
+            
+            {categories.map((cat) => (
+              <div key={cat.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                <div className="font-bold text-white">{cat.name}</div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                  title={lang === 'ar' ? 'حذف القسم' : '删除分类'}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: SITE SETTINGS */}
+      {activeTab === 'settings' && (
+        <div className="bg-[#111520] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5 text-xs text-slate-300">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <SlidersHorizontal className="w-5 h-5 text-amber-400" />
+            <span>{lang === 'ar' ? 'إعدادات الموقع الأساسية' : '网站基础设置'}</span>
+          </h3>
+
+          <form onSubmit={handleSaveSettings} className="space-y-4">
+            <div>
+              <label className="block text-slate-300 font-bold mb-1.5">
+                {lang === 'ar' ? 'اسم الموقع / البراند' : '网站/品牌名称'}
+              </label>
+              <input
+                type="text"
+                value={siteSettings.siteName}
+                onChange={(e) => setSiteSettings({ ...siteSettings, siteName: e.target.value })}
+                placeholder="مثال: جياوي ستور"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-bold mb-1.5">
+                {lang === 'ar' ? 'الوصف / الشعار (Slogan)' : '标语/描述'}
+              </label>
+              <input
+                type="text"
+                value={siteSettings.siteSlogan}
+                onChange={(e) => setSiteSettings({ ...siteSettings, siteSlogan: e.target.value })}
+                placeholder="مثال: منصة هدايا البث المباشر الأولى"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-bold mb-1.5">
+                {lang === 'ar' ? 'رابط لوجو الموقع (URL)' : '网站Logo链接'}
+              </label>
+              <input
+                type="url"
+                value={siteSettings.logoUrl}
+                onChange={(e) => setSiteSettings({ ...siteSettings, logoUrl: e.target.value })}
+                placeholder="https://..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'حفظ الإعدادات' : '保存设置'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

@@ -107,6 +107,25 @@ export default function App() {
     return null; // Start as visitor/explorer so purchase prompts account creation as requested
   });
 
+  // Dynamic Categories State
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [siteSettings, setSiteSettings] = useState<any>({});
+
+  useEffect(() => {
+    import('./lib/firebaseService').then(({ subscribeToCategories, subscribeToSiteSettings }) => {
+      const unsubCategories = subscribeToCategories((newCategories) => {
+        setCategories(newCategories);
+      });
+      const unsubSettings = subscribeToSiteSettings((settings) => {
+        if (settings) setSiteSettings(settings);
+      });
+      return () => {
+        unsubCategories();
+        unsubSettings();
+      };
+    });
+  }, []);
+
   useEffect(() => {
     if (user) {
       localStorage.setItem('jiawei_current_user_v1', JSON.stringify(user));
@@ -240,31 +259,12 @@ export default function App() {
     if (pendingPurchaseGift) {
       setPurchaseGift(pendingPurchaseGift);
       setPendingPurchaseGift(null);
-    } else if (authUser.role === 'designer' || authUser.role === 'admin') {
-      // If staff logged in, switch to their profile in dashboard
+    } else if (authUser.role === 'admin') {
+      // Dashboard is strictly for the Super Admin
       if (authUser.employeeId) {
         setActiveEmployeeId(authUser.employeeId);
       }
       setCurrentView('dashboard');
-    }
-  };
-
-  const handleQuickTrialAccount = () => {
-    const trialId = 'TRIAL-' + Math.floor(1000 + Math.random() * 9000);
-    const trialUser: AuthUser = {
-      id: trialId,
-      name: lang === 'ar' ? `مستخدم تجريبي #${trialId.slice(-4)}` : `Trial User #${trialId.slice(-4)}`,
-      email: `trial_${trialId.toLowerCase()}@streamgifts.com`,
-      role: 'buyer',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
-      isTrial: true
-    };
-    setUser(trialUser);
-    localStorage.setItem('jiawei_current_user_v1', JSON.stringify(trialUser));
-
-    if (pendingPurchaseGift) {
-      setPurchaseGift(pendingPurchaseGift);
-      setPendingPurchaseGift(null);
     }
   };
 
@@ -282,9 +282,18 @@ export default function App() {
       name: emp.name,
       email: emp.email,
       role: emp.role,
+      status: emp.status || 'active',
+      permissions: emp.permissions || {
+        giftUploadAndPublish: emp.role === 'admin' || emp.role === 'designer',
+        manageAccounts: emp.role === 'admin',
+        manageBanners: emp.role === 'admin',
+        viewOrders: true
+      },
       avatar: emp.avatar,
+      whatsapp: emp.whatsapp,
       employeeId: emp.id,
-      isTrial: false
+      isTrial: false,
+      lastLogin: new Date().toISOString()
     };
     setUser(staffUser);
     localStorage.setItem('jiawei_current_user_v1', JSON.stringify(staffUser));
@@ -336,11 +345,11 @@ export default function App() {
           setAuthInitialRole('staff');
           setIsAuthOpen(true);
         }}
-        onQuickTrialAccount={handleQuickTrialAccount}
         onLogout={handleLogout}
         setIsDeliveriesOpen={setIsDeliveriesOpen}
         setIsSupportOpen={setIsSupportOpen}
         user={user}
+        siteSettings={siteSettings}
       />
 
       {/* Main Layout */}
@@ -353,10 +362,8 @@ export default function App() {
             setActiveTab={setActiveTab}
             selectedCategory={category}
             setSelectedCategory={setCategory}
-            onOpenTool={(toolName) => {
-              setIsSupportOpen(true);
-            }}
             onOpenVipModal={() => setIsVipOpen(true)}
+            categories={categories}
           />
 
           {/* Center / Right Content Canvas */}
@@ -386,6 +393,7 @@ export default function App() {
               setSelectedFormat={setSelectedFormat}
               onReset={handleResetFilters}
               totalCount={filteredGifts.length}
+              categories={categories}
             />
 
             {/* Gifts Grid Showcase */}
@@ -416,9 +424,9 @@ export default function App() {
           </main>
         </div>
       ) : (
-        /* DASHBOARD VIEW (Staff Only Access / Role Guard) */
+        /* DASHBOARD VIEW (Admin Only Access / Role Guard) */
         <main className="flex-1 w-full">
-          {(!user || user.role === 'buyer') ? (
+          {(!user || user.role !== 'admin') ? (
             <div className="max-w-xl mx-auto my-16 p-8 rounded-3xl bg-[#111520] border border-slate-800 text-center space-y-5 shadow-2xl">
               <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -427,12 +435,12 @@ export default function App() {
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-black text-white">
-                  {lang === 'ar' ? 'منطقة لوحة التحكم خاصة بالموظفين والمصممين' : '员工与设计师专属管理后台'}
+                  {lang === 'ar' ? 'منطقة لوحة التحكم خاصة بحساب المسؤول فقط (Super Admin)' : '管理后台仅对超级管理员开放'}
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
                   {lang === 'ar'
-                    ? 'يتم الدخول لهذه اللوحة بواسطة البريد الإلكتروني وكلمة المرور الخاصة بالموظف لرفع الهدايا وربط رقم الواتساب وإدارة المبيعات.'
-                    : '此区域需要使用管理员分配的员工邮箱与密码登录，以发布动效素材、绑定联系方式并管理收益。'}
+                    ? 'يتطلب الوصول إلى لوحة التحكم تسجيل الدخول بحساب المسؤول المعتمد بكامل الصلاحيات لإدارة ونشر الهدايا، البنرات الإعلانية، مراجعة الطلبات، وضبط الحسابات.'
+                    : '访问管理后台需要使用拥有完整权限的超级管理员账号登录，以管理素材、横幅广告、审核订单及分配权限。'}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -444,7 +452,7 @@ export default function App() {
                   }}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
                 >
-                  {lang === 'ar' ? 'تسجيل دخول موظف / مصمم' : '员工账号登录'}
+                  {lang === 'ar' ? 'تسجيل دخول المسؤول' : '管理员登录'}
                 </button>
                 <button
                   type="button"
@@ -471,6 +479,8 @@ export default function App() {
               onStaffLogin={handleStaffLogin}
               banners={banners}
               setBanners={setBanners}
+              currentUser={user}
+              categories={categories}
             />
           )}
         </main>

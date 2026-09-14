@@ -418,12 +418,21 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                     onClick={() => onSelectGift(rel)}
                     className="w-20 shrink-0 rounded-lg overflow-hidden border border-slate-800 hover:border-cyan-500/60 cursor-pointer group bg-slate-900"
                   >
-                    <div className="aspect-square relative overflow-hidden">
-                      <img
-                        src={rel.posterUrl}
-                        alt={rel.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
+                    <div className="aspect-square relative overflow-hidden bg-slate-950 flex items-center justify-center">
+                      {rel.posterUrl ? (
+                        <img
+                          src={rel.posterUrl}
+                          alt={rel.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                      ) : (
+                        <video
+                          src={rel.videoUrl ? `${rel.videoUrl}#t=0.001` : undefined}
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                     </div>
                     <div className="p-1 text-[10px] text-slate-300 truncate text-center">
                       {rel.title}

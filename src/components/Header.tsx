@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Briefcase
 } from 'lucide-react';
-import { Language, CartItem, AuthUser } from '../types';
+import { Language, CartItem, AuthUser, SiteSettings } from '../types';
 import { translations } from '../utils/translations';
 
 interface HeaderProps {
@@ -30,11 +30,11 @@ interface HeaderProps {
   setIsCartOpen: (open: boolean) => void;
   setIsAuthOpen: (open: boolean) => void;
   onOpenStaffAuth: () => void;
-  onQuickTrialAccount: () => void;
   onLogout: () => void;
   setIsDeliveriesOpen: (open: boolean) => void;
   setIsSupportOpen: (open: boolean) => void;
   user: AuthUser | null;
+  siteSettings?: SiteSettings;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -49,11 +49,11 @@ export const Header: React.FC<HeaderProps> = ({
   setIsCartOpen,
   setIsAuthOpen,
   onOpenStaffAuth,
-  onQuickTrialAccount,
   onLogout,
   setIsDeliveriesOpen,
   setIsSupportOpen,
-  user
+  user,
+  siteSettings
 }) => {
   const t = translations[lang];
 
@@ -62,45 +62,60 @@ export const Header: React.FC<HeaderProps> = ({
       onOpenStaffAuth();
       return;
     }
-    if (user.role === 'buyer') {
-      if (confirm(lang === 'ar' 
-        ? 'لوحة التحكم مخصصة لموظفي ومصممي المنصة. هل تود تسجيل الدخول بحساب موظف للوصول للوحة التحكم؟' 
-        : '管理后台仅对员工开放。是否切换至员工账号登录？')) {
-        onOpenStaffAuth();
-      }
+    if (user.role !== 'admin') {
+      alert(lang === 'ar' 
+        ? '⚠️ لوحة التحكم مخصصة لحساب المسؤول (Super Admin) فقط. يرجى تسجيل الدخول بحساب المسؤول للوصول.' 
+        : '管理后台仅对超级管理员开放。请使用管理员账号登录。');
+      onOpenStaffAuth();
       return;
     }
     setCurrentView(currentView === 'store' ? 'dashboard' : 'store');
   };
 
+  const displayName = siteSettings?.siteName?.trim() || t.siteName;
+  const displaySlogan = siteSettings?.siteSlogan?.trim() || t.siteSlogan;
+  const displaySubtitle = siteSettings?.siteSubTitle?.trim() || 'JIAWEI EFFECTS · LIVE STREAM VFX';
+
   return (
     <header className="sticky top-0 z-40 w-full bg-[#0b0e14]/95 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-6 py-2.5 transition-all">
       <div className="max-w-[1720px] mx-auto flex items-center justify-between gap-3">
-        {/* Brand Logo - 100% clone of video */}
+        {/* Brand Logo & Name */}
         <div className="flex items-center gap-4 shrink-0">
           <div 
             onClick={() => setCurrentView('store')}
             className="flex items-center gap-2.5 cursor-pointer group"
           >
-            {/* Stylized Cyan-Blue V Logo */}
-            <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
-              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current" preserveAspectRatio="xMidYMid meet">
-                <path d="M3.5 4L9.5 19.5L14 9.5L12 5.5L8 14L5.5 4H3.5ZM14.5 4L20.5 19.5H18L13.5 8L15 4H14.5Z" />
-              </svg>
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping opacity-75"></span>
-            </div>
+            {/* Custom Logo Image or Default Stylized Cyan-Blue V Logo */}
+            {siteSettings?.logoUrl ? (
+              <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-slate-900 border border-slate-700/80 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+                <img
+                  src={siteSettings.logoUrl}
+                  alt={displayName}
+                  className="w-full h-full object-contain p-0.5"
+                />
+              </div>
+            ) : (
+              <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current" preserveAspectRatio="xMidYMid meet">
+                  <path d="M3.5 4L9.5 19.5L14 9.5L12 5.5L8 14L5.5 4H3.5ZM14.5 4L20.5 19.5H18L13.5 8L15 4H14.5Z" />
+                </svg>
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping opacity-75"></span>
+              </div>
+            )}
 
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-lg tracking-wide text-white group-hover:text-cyan-400 transition-colors">
-                  {t.siteName}
+                  {displayName}
                 </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium border border-cyan-500/30">
-                  {t.siteSlogan}
-                </span>
+                {displaySlogan && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium border border-cyan-500/30">
+                    {displaySlogan}
+                  </span>
+                )}
               </div>
               <span className="text-[10px] text-slate-400 tracking-wider">
-                JIAWEI EFFECTS · LIVE STREAM VFX
+                {displaySubtitle}
               </span>
             </div>
           </div>
@@ -256,24 +271,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-1.5">
-              {/* Quick Trial Account Button */}
-              <button
-                type="button"
-                onClick={onQuickTrialAccount}
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-cyan-500/20 hover:from-amber-500/30 hover:to-cyan-500/30 text-amber-300 hover:text-amber-200 text-xs font-bold border border-amber-500/40 transition-all shadow-sm active:scale-95"
-                title={lang === 'ar' ? 'إنشاء حساب تجريبي فوري بنقرة واحدة لتجربة المنصة والشراء' : '一键极速体验'}
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
-                <span>{lang === 'ar' ? 'حساب تجريبي' : '体验账号'}</span>
-              </button>
-
               {/* Login / Register Button */}
               <button
                 onClick={() => setIsAuthOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-xs text-slate-200 font-medium border border-slate-700 transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs text-white font-bold shadow-md shadow-cyan-900/30 transition-all active:scale-95 cursor-pointer"
               >
-                <User className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{lang === 'ar' ? 'تسجيل الدخول' : t.login}</span>
+                <User className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تسجيل الدخول / حساب جديد' : t.login}</span>
               </button>
             </div>
           )}

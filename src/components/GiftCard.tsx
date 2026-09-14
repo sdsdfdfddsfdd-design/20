@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Play, Eye, ShoppingCart, CheckCircle2, Sparkles, Flame, MessageCircle } from 'lucide-react';
+import { Play, Eye, ShoppingCart, CheckCircle2, Sparkles, Flame, MessageCircle, Video } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 
@@ -21,6 +21,8 @@ export const GiftCard: React.FC<GiftCardProps> = ({
   const t = translations[lang];
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const hasPoster = Boolean(gift.posterUrl && gift.posterUrl.trim());
 
   const handleMouseEnter = () => {
     setIsHovered(true);
@@ -48,29 +50,42 @@ export const GiftCard: React.FC<GiftCardProps> = ({
       onClick={() => onSelectGift(gift)}
       className="group relative flex flex-col rounded-2xl bg-[#131722] border border-slate-800/90 hover:border-cyan-500/60 transition-all duration-300 hover:shadow-xl hover:shadow-cyan-950/20 overflow-hidden cursor-pointer"
     >
-      {/* Visual Container (Video on hover, Poster when idle) */}
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-950">
-        {/* Background Poster Image */}
-        <img
-          src={gift.posterUrl}
-          alt={displayTitle}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
-            isHovered ? 'opacity-20' : 'opacity-100'
-          }`}
-          loading="lazy"
-        />
+      {/* Visual Container (Video on hover or full video face when no poster) */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-950 flex items-center justify-center">
+        {/* Background Poster Image (Only if poster is provided and not disabled) */}
+        {hasPoster && (
+          <img
+            src={gift.posterUrl}
+            alt={displayTitle}
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              isHovered ? 'opacity-20' : 'opacity-100'
+            }`}
+            loading="lazy"
+          />
+        )}
 
-        {/* Hovering Live Video Stream Preview (External Video URL - 0 server load!) */}
+        {/* Live Video Stream Preview (Takes full stage when no poster image, or plays on hover) */}
         <video
           ref={videoRef}
-          src={gift.videoUrl}
+          src={gift.videoUrl ? `${gift.videoUrl}#t=0.001` : undefined}
           loop
           muted
           playsInline
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-            isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          preload="metadata"
+          className={`w-full h-full object-cover transition-opacity duration-300 ${
+            hasPoster
+              ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
+              : 'opacity-100'
           }`}
         />
+
+        {/* Video-Only Badge (if no poster image) */}
+        {!hasPoster && (
+          <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-[10px] text-cyan-300 font-medium">
+            <Video className="w-2.5 h-2.5" />
+            <span>{lang === 'ar' ? 'فيديو مباشر' : '动态视频'}</span>
+          </div>
+        )}
 
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-10">

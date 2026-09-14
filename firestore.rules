@@ -23,8 +23,26 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    // Users / Accounts Collection: Readable by all, writable by authenticated users
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
     // Banners Collection: Readable by all, writable by authenticated users
     match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Categories Collection: Readable by all, writable by authenticated users
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Site Settings Collection: Readable by all, writable by authenticated users
+    match /settings/{settingId} {
       allow read: if true;
       allow write: if isAuthenticated();
     }

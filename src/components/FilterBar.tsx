@@ -1,6 +1,6 @@
 import React from 'react';
 import { RotateCcw, Sparkles, Filter, ChevronDown } from 'lucide-react';
-import { Language } from '../types';
+import { Language, CustomCategory } from '../types';
 import { translations } from '../utils/translations';
 
 interface FilterBarProps {
@@ -19,6 +19,7 @@ interface FilterBarProps {
   setSelectedFormat: (fmt: string) => void;
   onReset: () => void;
   totalCount: number;
+  categories?: CustomCategory[];
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -36,7 +37,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   selectedFormat,
   setSelectedFormat,
   onReset,
-  totalCount
+  totalCount,
+  categories = []
 }) => {
   const t = translations[lang];
 
@@ -60,21 +62,19 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
 
-        {/* Category */}
+        {/* Category: Dynamic from admin (starting with 'القسم العام') */}
         <div className="relative">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
           >
-            <option value="all">{t.catAll}</option>
-            <option value="romance">{t.catRomance}</option>
-            <option value="tech">{t.catTech}</option>
-            <option value="ancient">{t.catAncient}</option>
-            <option value="festival">{t.catFestival}</option>
-            <option value="luxury">{t.catLuxury}</option>
-            <option value="fun">{t.catFun}</option>
-            <option value="character">{t.catCharacter}</option>
+            <option value="all">{lang === 'ar' ? 'جميع الأقسام' : '所有分类'}</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {lang === 'ar' && cat.nameAr ? cat.nameAr : cat.name}
+              </option>
+            ))}
           </select>
           <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>

@@ -62,11 +62,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   key={index}
                   className="flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors"
                 >
-                  <img
-                    src={item.gift.posterUrl}
-                    alt={item.gift.title}
-                    className="w-14 h-14 rounded-lg object-cover border border-slate-700 shrink-0"
-                  />
+                  {item.gift.posterUrl ? (
+                    <img
+                      src={item.gift.posterUrl}
+                      alt={item.gift.title}
+                      className="w-14 h-14 rounded-lg object-cover border border-slate-700 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-black border border-cyan-500/40 shrink-0 overflow-hidden relative flex items-center justify-center">
+                      <video src={item.gift.videoUrl ? `${item.gift.videoUrl}#t=0.001` : undefined} muted playsInline className="w-full h-full object-cover" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-bold text-white truncate">
                       {item.gift.title}
