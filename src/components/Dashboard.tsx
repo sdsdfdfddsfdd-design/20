@@ -690,7 +690,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
       }
 
-      // Attempt 2: If direct capture failed or threw SecurityError, use clean blob or /api/proxy-media
+      // Attempt 2: If direct capture failed or threw SecurityError, try clean blob fetching
       if (!capturedDataUrl) {
         let blobUrl = '';
         let isLocalBlob = false;
@@ -699,13 +699,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
           blobUrl = videoUrl;
           isLocalBlob = true;
         } else {
-          // Fetch through our local proxy endpoint which has full CORS permission
-          const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(videoUrl)}`;
-          const resp = await fetch(proxyUrl);
-          if (!resp.ok) {
-            throw new Error(`Media proxy returned HTTP ${resp.status}`);
+          let blob: Blob | null = null;
+          
+          // Try multiple ways to fetch the video file as a Blob (which makes it CORS-safe for canvas)
+          const fetchTargets = [
+            videoUrl, // 1. Try direct fetch (works if server has CORS headers)
+            `/api/proxy-media?url=${encodeURIComponent(videoUrl)}`, // 2. Try our local Vite dev proxy
+            `https://corsproxy.io/?${encodeURIComponent(videoUrl)}` // 3. Try public proxy fallback (for static hosting)
+          ];
+
+          for (const targetUrl of fetchTargets) {
+            try {
+              const resp = await fetch(targetUrl, { mode: 'cors' });
+              if (resp.ok) {
+                blob = await resp.blob();
+                break; // Found a working method!
+              }
+            } catch (err) {
+              console.warn(`Fetch method failed for: ${targetUrl}`);
+            }
           }
-          const blob = await resp.blob();
+
+          if (!blob) {
+            throw new Error(`All fetch methods failed for ${videoUrl}`);
+          }
+          
           blobUrl = URL.createObjectURL(blob);
         }
 
@@ -717,7 +735,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         tempVid.src = blobUrl;
 
         await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => resolve(), 4000);
+          const timeout = setTimeout(() => reject(new Error('Video load timeout')), 8000);
           tempVid.onloadedmetadata = () => {
             tempVid.currentTime = Math.min(targetTime, tempVid.duration || targetTime);
           };
