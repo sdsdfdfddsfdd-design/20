@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AuthUser, EmployeeUser, Language, GiftItem, UserPermissions } from '../types';
 import { saveUserToDatabase } from '../lib/firebaseService';
+import { InternationalPhoneInput } from './InternationalPhoneInput';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -539,20 +540,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    رقم الواتساب (للتراخيص)
+                  <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center justify-between">
+                    <span>{lang === 'ar' ? 'رقم الواتساب (للتراخيص والتواصل)' : 'WhatsApp Number'}</span>
+                    <span className="text-[10px] text-cyan-400 font-normal">
+                      {lang === 'ar' ? 'اختر الدولة' : 'Select country'}
+                    </span>
                   </label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      value={regWhatsapp}
-                      onChange={(e) => setRegWhatsapp(e.target.value)}
-                      placeholder="+966501234567"
-                      className="w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 text-xs font-mono focus:outline-none focus:border-emerald-500"
-                      dir="ltr"
-                    />
-                    <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  </div>
+                  <InternationalPhoneInput
+                    value={regWhatsapp}
+                    onChange={setRegWhatsapp}
+                    lang={lang}
+                  />
                 </div>
               </div>
 

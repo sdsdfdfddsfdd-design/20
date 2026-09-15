@@ -1,6 +1,6 @@
 import { collection, getDocs, doc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, ensureFirebaseAuth } from './firebase';
-import { GiftItem, DeliveryItem, EmployeeUser, HeroBannerItem, CustomCategory, SiteSettings } from '../types';
+import { GiftItem, DeliveryItem, EmployeeUser, HeroBannerItem, CustomCategory, SiteSettings, UserRole, UserPermissions } from '../types';
 import { INITIAL_GIFTS } from '../data/initialGifts';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
@@ -136,6 +136,46 @@ export async function deleteGift(id: string) {
   } catch (error) {
     console.error('Error deleting gift:', handleFirestoreError(error));
     throw error;
+  }
+}
+
+/**
+ * Updates WhatsApp contact on all gifts uploaded by a specific creator/employee
+ */
+export async function updateCreatorGiftsWhatsapp(creatorId: string, creatorName: string, newWhatsapp: string): Promise<number> {
+  try {
+    await ensureFirebaseAuth();
+    const giftsSnapshot = await getDocs(collections.gifts);
+    let updatedCount = 0;
+    const updatePromises: Promise<void>[] = [];
+
+    giftsSnapshot.forEach((giftDoc) => {
+      const data = giftDoc.data() as GiftItem;
+      const matchById = creatorId && data.author?.id === creatorId;
+      const matchByName = creatorName && data.author?.name && 
+        data.author.name.trim().toLowerCase() === creatorName.trim().toLowerCase();
+
+      if (matchById || matchByName) {
+        const updatedAuthor = {
+          ...data.author,
+          whatsapp: newWhatsapp
+        };
+        updatePromises.push(
+          updateDoc(doc(db, 'gifts', giftDoc.id), {
+            'author.whatsapp': newWhatsapp
+          })
+        );
+        updatedCount++;
+      }
+    });
+
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+    }
+    return updatedCount;
+  } catch (error) {
+    console.error('Error updating creator gifts WhatsApp:', handleFirestoreError(error));
+    return 0;
   }
 }
 

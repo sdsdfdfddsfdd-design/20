@@ -41,16 +41,18 @@ import {
   Image as ImageIcon,
   SlidersHorizontal
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
 import { PrintDocumentModal } from './PrintDocumentModal';
 import { BannerManager } from './BannerManager';
+import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { 
   addGift, 
   updateGift, 
   deleteGift, 
+  updateCreatorGiftsWhatsapp,
   updateEmployee, 
   changeEmployeeRole,
   deleteEmployee, 
@@ -155,14 +157,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ? (staffList.find((e) => e.id === currentEmpId) || staffList[0]) 
     : (currentUser as unknown as EmployeeUser) || staffList[0];
 
-  const currentUserPermissions = (currentUser as unknown as EmployeeUser)?.permissions || {};
+  const currentUserPermissions: Partial<UserPermissions> = (currentUser as unknown as EmployeeUser)?.permissions || {};
   const isSuperAdmin = currentUser?.role === 'admin';
 
   const canManageGifts = isSuperAdmin || currentUserPermissions.giftUploadAndPublish !== false;
-  const canManageAccounts = isSuperAdmin || currentUserPermissions.manageAccounts;
-  const canManageBanners = isSuperAdmin || currentUserPermissions.manageBanners;
-  const canViewOrders = isSuperAdmin || currentUserPermissions.viewOrders;
-  const canManageSettings = isSuperAdmin || currentUserPermissions.manageSettings;
+  const canManageAccounts = isSuperAdmin || !!currentUserPermissions.manageAccounts;
+  const canManageBanners = isSuperAdmin || !!currentUserPermissions.manageBanners;
+  const canViewOrders = isSuperAdmin || !!currentUserPermissions.viewOrders;
+  const canManageSettings = isSuperAdmin || !!currentUserPermissions.manageSettings;
 
   // If user lands here, ensure activeTab is one they have access to
   useEffect(() => {
@@ -177,12 +179,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [isAdmin, activeTab, canManageGifts, canViewOrders, canManageAccounts]);
 
-  // First-Time Profile Setup Modal State
+  // First-Time / Profile Setup Modal State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [editingStaffTarget, setEditingStaffTarget] = useState<EmployeeUser | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profileWhatsapp, setProfileWhatsapp] = useState('');
   const [profileBio, setProfileBio] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
+
+  const handleOpenProfileModal = (targetEmployee?: EmployeeUser) => {
+    const emp = targetEmployee || activeStaff;
+    setEditingStaffTarget(emp);
+    setProfileName(emp.name || '');
+    setProfileWhatsapp(emp.whatsapp || '');
+    setProfileBio(emp.bio || '');
+    setProfileAvatar(emp.avatar || '');
+    setIsProfileModalOpen(true);
+  };
 
   // Sync profile form when active employee changes
   useEffect(() => {
@@ -193,6 +206,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setProfileAvatar(activeStaff.avatar || '');
       // Automatically prompt profile setup if not completed yet (as requested: لأول مرة فقط)
       if (!activeStaff.isProfileCompleted) {
+        setEditingStaffTarget(activeStaff);
         setIsProfileModalOpen(true);
       }
     }
@@ -519,35 +533,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }, 1200);
   };
 
-  // Save First-Time Profile Setup (لأول مرة فقط)
-  const handleSaveProfile = (e: React.FormEvent) => {
+  // Save First-Time / Profile Setup & Sync WhatsApp to all gifts
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim()) {
       alert(lang === 'ar' ? 'يرجى إدخال اسمك أو لقبك كمصمم' : '请输入设计师姓名');
       return;
     }
     if (!profileWhatsapp.trim()) {
-      alert(lang === 'ar' ? 'يرجى إدخال رقم الواتساب' : '请输入WhatsApp号码');
+      alert(lang === 'ar' ? 'يرجى إدخال رقم الواتساب مع كود الدولة' : '请输入WhatsApp号码');
       return;
     }
 
-    updateEmployee({
-      ...activeStaff,
-      name: profileName.trim(),
-      whatsapp: profileWhatsapp.trim(),
-      bio: profileBio.trim() || activeStaff.bio,
-      avatar: profileAvatar.trim() || activeStaff.avatar,
-      isProfileCompleted: true
-    });
+    const targetStaff = editingStaffTarget || activeStaff;
+    const cleanWhatsapp = profileWhatsapp.trim();
 
-    setAuthorName(profileName.trim());
+    const updatedStaff: EmployeeUser = {
+      ...targetStaff,
+      name: profileName.trim(),
+      whatsapp: cleanWhatsapp,
+      bio: profileBio.trim() || targetStaff.bio,
+      avatar: profileAvatar.trim() || targetStaff.avatar,
+      isProfileCompleted: true
+    };
+
+    // Update in Firestore
+    await updateEmployee(updatedStaff);
+
+    // Update in local staff list (activeStaff will automatically update because it is derived from staffList)
+    setStaffList((prev) => prev.map((e) => (e.id === updatedStaff.id ? updatedStaff : e)));
+
+    if (targetStaff.id === activeStaff?.id) {
+      setAuthorName(profileName.trim());
+    }
+
+    // Update WhatsApp across ALL gifts created/uploaded by this user in local state
+    let updatedGiftsCount = 0;
+    setGifts((prevGifts) =>
+      prevGifts.map((gift) => {
+        const matchById = gift.author?.id && (gift.author.id === targetStaff.id || gift.author.id === activeStaff.id);
+        const matchByName = gift.author?.name && (
+          gift.author.name.trim().toLowerCase() === targetStaff.name?.trim().toLowerCase() ||
+          gift.author.name.trim().toLowerCase() === profileName.trim().toLowerCase()
+        );
+        if (matchById || matchByName) {
+          updatedGiftsCount++;
+          return {
+            ...gift,
+            author: {
+              ...gift.author,
+              whatsapp: cleanWhatsapp
+            }
+          };
+        }
+        return gift;
+      })
+    );
+
+    // Update WhatsApp on all gifts in Firestore database
+    try {
+      const cloudUpdated = await updateCreatorGiftsWhatsapp(
+        targetStaff.id,
+        profileName.trim() || targetStaff.name,
+        cleanWhatsapp
+      );
+      console.log(`Successfully synced WhatsApp across ${cloudUpdated} gifts in cloud database.`);
+    } catch (err) {
+      console.error('Error syncing gifts WhatsApp in Firestore:', err);
+    }
+
     setIsProfileModalOpen(false);
+    setEditingStaffTarget(null);
     setSuccessMessage(
       lang === 'ar'
-        ? 'تم حفظ ملفك ورقم الواتساب بنجاح! يمكنك الآن رفع الهدايا مباشرة دون تكرار إدخال بياناتك.'
-        : '个人资料与WhatsApp已保存，现在可以一键上传素材！'
+        ? `تم حفظ وتأكيد رقم الواتساب (${cleanWhatsapp}) وتحديثه بنجاح على جميع هداياك (${updatedGiftsCount} هدية)!`
+        : `WhatsApp number (${cleanWhatsapp}) confirmed and synced across all ${updatedGiftsCount} gifts!`
     );
-    setTimeout(() => setSuccessMessage(null), 3000);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   // Create New Staff Member (انشاء حساب موظف داخل المنصة)
@@ -2097,15 +2159,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                         <span>{t.whatsappNumber} *</span>
                       </span>
-                      <span className="text-[10px] text-slate-400 font-normal">مع مفتاح الدولة (مثل +966...)</span>
+                      <span className="text-[10px] text-cyan-400 font-normal">
+                        {lang === 'ar' ? 'اختر الدولة وأدخل الرقم' : 'Select country & enter phone'}
+                      </span>
                     </label>
-                    <input
-                      type="tel"
-                      required
+                    <InternationalPhoneInput
                       value={newStaffWhatsapp}
-                      onChange={(e) => setNewStaffWhatsapp(e.target.value)}
-                      placeholder="+966551234567 أو +201012345678"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500 dir-ltr text-left"
+                      onChange={setNewStaffWhatsapp}
+                      lang={lang}
+                      required
                     />
                   </div>
 
@@ -2443,6 +2505,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                           <ExternalLink className="w-2.5 h-2.5" />
                                         </a>
                                       )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenProfileModal(emp)}
+                                        className="ml-1 text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                        title={lang === 'ar' ? 'تعديل رقم الواتساب وتحديثه على جميع هداياه' : 'Edit WhatsApp and sync all gifts'}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                        <span>{lang === 'ar' ? 'تعديل الرقم' : 'Edit'}</span>
+                                      </button>
                                     </div>
 
                                     <span>•</span>
@@ -2653,18 +2724,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-black text-white">
-                    {t.firstTimeProfileTitle}
+                    {editingStaffTarget && editingStaffTarget.id !== activeStaff?.id
+                      ? (lang === 'ar' ? `تعديل بيانات ورقم ${editingStaffTarget.name}` : `Edit ${editingStaffTarget.name}`)
+                      : t.firstTimeProfileTitle}
                   </h3>
                   <p className="text-[11px] text-cyan-300 font-semibold">
-                    {lang === 'ar' ? 'إدخال البيانات الأساسية لمرة واحدة فقط' : '只需填写一次，后续自动关联'}
+                    {editingStaffTarget && editingStaffTarget.id !== activeStaff?.id
+                      ? (lang === 'ar' ? 'تحديث رقم الواتساب ومزامنته مع جميع هدايا هذا المصمم' : 'Update WhatsApp & sync all gifts')
+                      : (lang === 'ar' ? 'إدخال البيانات الأساسية ورقم الواتساب لمزامنة الهدايا' : '只需填写一次，后续自动关联')}
                   </p>
                 </div>
               </div>
 
-              {activeStaff?.isProfileCompleted && (
+              {(activeStaff?.isProfileCompleted || editingStaffTarget) && (
                 <button
                   type="button"
-                  onClick={() => setIsProfileModalOpen(false)}
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    setEditingStaffTarget(null);
+                  }}
                   className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
                 >
                   <X className="w-4 h-4" />
@@ -2676,10 +2754,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="p-3.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-slate-300 leading-relaxed space-y-1">
               <p className="text-cyan-200 font-bold flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{lang === 'ar' ? 'لماذا يطلب منك إدخال الاسم ورقم الواتساب؟' : '为什么需要完善此信息？'}</span>
+                <span>{lang === 'ar' ? 'مزامنة رقم الواتساب تلقائياً مع جميع الهدايا' : 'Automatic WhatsApp Sync with Gifts'}</span>
               </p>
               <p className="text-[11px] text-slate-300">
-                {t.firstTimeProfileDesc}
+                {lang === 'ar' 
+                  ? 'اختر كود دولتك من القائمة وأدخل رقمك؛ بمجرد التأكيد سيقوم النظام فوراً بتحديث رقم التواصل على جميع هداياك المعروضة في المتجر للعملاء.'
+                  : t.firstTimeProfileDesc}
               </p>
             </div>
 
@@ -2705,16 +2785,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                     <span>{t.whatsappNumber} *</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal">مع مفتاح الدولة (مثل +966...)</span>
+                  <span className="text-[10px] text-cyan-400 font-normal">
+                    {lang === 'ar' ? 'اختر كود دولتك وأدخل رقمك' : 'Select country code & enter phone'}
+                  </span>
                 </label>
-                <input
-                  type="tel"
-                  required
+                <InternationalPhoneInput
                   value={profileWhatsapp}
-                  onChange={(e) => setProfileWhatsapp(e.target.value)}
-                  placeholder="+966551234567 أو +201012345678"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-emerald-500/60 text-sm text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-400 dir-ltr text-left"
+                  onChange={setProfileWhatsapp}
+                  lang={lang}
+                  required
                 />
+                <div className="mt-2 p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-start gap-1.5">
+                  <span className="text-emerald-400 text-xs shrink-0 mt-0.5">⚡</span>
+                  <span className="leading-tight">
+                    {lang === 'ar'
+                      ? 'ميزة التحديث الشامل: عند الضغط على تأكيد وحفظ، سيتم تحديث هذا الرقم فوراً على جميع الهدايا والتصاميم التي قمت برفعها مسبقاً.'
+                      : 'Sync feature: Confirming will automatically update this number across all gifts and effects you uploaded.'}
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -2756,10 +2844,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                {activeStaff?.isProfileCompleted && (
+                {(activeStaff?.isProfileCompleted || editingStaffTarget) && (
                   <button
                     type="button"
-                    onClick={() => setIsProfileModalOpen(false)}
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      setEditingStaffTarget(null);
+                    }}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
                   >
                     {lang === 'ar' ? 'إلغاء' : '取消'}
