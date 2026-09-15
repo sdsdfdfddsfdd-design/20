@@ -316,15 +316,18 @@ export const GiftModal: React.FC<GiftModalProps> = ({
               {/* Formats Info Bar */}
               <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
                 <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  {lang === 'ar' ? 'الصيغ والمواصفات الفنية المرفقة:' : '已包含动效格式与文件体积:'}
+                  {lang === 'ar' ? 'الصيغ الفنية المرفقة:' : '已包含动效格式:'}
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  {gift.formats.map((fmt, i) => (
-                    <div key={i} className="flex items-center justify-between p-1.5 rounded bg-slate-800/60 text-slate-300 text-[11px]">
-                      <span className="font-medium truncate mr-1">{fmt.name}</span>
-                      <span className="text-[10px] text-cyan-400 font-mono shrink-0">{fmt.size}</span>
-                    </div>
-                  ))}
+                  {gift.formats.map((fmt, i) => {
+                    const cleanName = fmt.name.replace(/\s*\([^)]*(MB|KB|GB|B|\d)[^)]*\)/gi, '').trim();
+                    return (
+                      <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/70 border border-slate-700/60 text-slate-200 text-[11px] font-medium hover:border-cyan-500/40 transition-colors">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
+                        <span className="truncate">{cleanName || fmt.name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="flex flex-wrap items-center gap-1 pt-1">
                   {['SVGA', 'VAP', 'MP4', 'PAG', 'JSON', 'WEBP', 'GIF', 'MOV'].map((fmt) => (

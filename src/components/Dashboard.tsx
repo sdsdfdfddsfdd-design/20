@@ -233,7 +233,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     setPosterLoadError(false);
   }, [posterUrl]);
-  const [formatsText, setFormatsText] = useState('SVGA动效文件 (10MB), MP4带声音透明通道 (5.2MB), VAP特效 (12MB), PAG文件 (7MB)');
+  const [formatsText, setFormatsText] = useState('SVGA动效文件, MP4带声音透明通道, VAP特效, PAG文件');
   const [category, setCategory] = useState<GiftItem['category']>('ancient');
   const [theme, setTheme] = useState('国风仙侠');
   const [effectType, setEffectType] = useState<'2D' | '3D'>('3D');
@@ -462,9 +462,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // Parse formats
     const parsedFormats: GiftFormat[] = formatsText.split(',').map((f) => {
       const trimmed = f.trim();
+      const cleanName = trimmed.replace(/\s*\([^)]*(MB|KB|GB|B|\d)[^)]*\)/gi, '').trim();
       return {
-        name: trimmed,
-        size: trimmed.includes('(') ? trimmed.split('(')[1].replace(')', '') : '8.5MB'
+        name: cleanName || trimmed,
+        size: ''
       };
     });
 
@@ -907,7 +908,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setVideoUrl(gift.videoUrl);
     setPosterUrl(gift.posterUrl || '');
     setUsePosterImage(Boolean(gift.posterUrl && gift.posterUrl.trim()));
-    setFormatsText(gift.formats.map((f) => f.name).join(', '));
+    setFormatsText(gift.formats.map((f) => f.name.replace(/\s*\([^)]*(MB|KB|GB|B|\d)[^)]*\)/gi, '').trim()).join(', '));
     setCategory(gift.category);
     setTheme(gift.theme);
     setEffectType(gift.effectType);
