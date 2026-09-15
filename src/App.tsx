@@ -101,7 +101,21 @@ export default function App() {
   }, []);
 
   const [activeEmployeeId, setActiveEmployeeId] = useState<string>(() => {
-    return localStorage.getItem('jiawei_active_emp_id') || 'EMP-001';
+    const savedEmp = localStorage.getItem('jiawei_active_emp_id');
+    const savedUserStr = localStorage.getItem('jiawei_current_user_v1');
+    if (savedUserStr) {
+      try {
+        const u = JSON.parse(savedUserStr);
+        if (u && ['admin', 'designer', 'employee'].includes(u.role)) {
+          // Prefer the logged in user's ID over EMP-001 if not explicitly saved as something else,
+          // or if the saved ID is the default EMP-001, just use the real user's ID.
+          if (!savedEmp || savedEmp === 'EMP-001') {
+            return u.employeeId || u.id;
+          }
+        }
+      } catch(e) {}
+    }
+    return savedEmp || 'EMP-001';
   });
 
   useEffect(() => {
@@ -303,10 +317,11 @@ ID الحساب: ${user.id}` : ''}
     if (pendingPurchaseGift) {
       setPurchaseGift(pendingPurchaseGift);
       setPendingPurchaseGift(null);
-    } else if (authUser.role === 'admin') {
-      // Dashboard is strictly for the Super Admin
+    } else if (['admin', 'designer', 'employee'].includes(authUser.role)) {
       if (authUser.employeeId) {
         setActiveEmployeeId(authUser.employeeId);
+      } else {
+        setActiveEmployeeId(authUser.id);
       }
       setCurrentView('dashboard');
     }
