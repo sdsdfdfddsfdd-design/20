@@ -704,8 +704,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           // Try multiple ways to fetch the video file as a Blob (which makes it CORS-safe for canvas)
           const fetchTargets = [
             videoUrl, // 1. Try direct fetch (works if server has CORS headers)
-            `/api/proxy-media?url=${encodeURIComponent(videoUrl)}`, // 2. Try our local Vite dev proxy
-            `https://corsproxy.io/?${encodeURIComponent(videoUrl)}` // 3. Try public proxy fallback (for static hosting)
+            `/api/proxy-media?url=${encodeURIComponent(videoUrl)}`, // 2. Try our local Vite dev proxy / Vercel Serverless Function
+            `https://corsproxy.io/?${encodeURIComponent(videoUrl)}`, // 3. Try public proxy fallback (for static hosting)
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(videoUrl)}` // 4. Another public proxy
           ];
 
           for (const targetUrl of fetchTargets) {
