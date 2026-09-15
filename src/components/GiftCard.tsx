@@ -24,10 +24,14 @@ export const GiftCard: React.FC<GiftCardProps> = ({
 
   const hasPoster = Boolean(gift.posterUrl && gift.posterUrl.trim());
 
+  const startTime = typeof gift.previewStartTime === 'number' ? gift.previewStartTime : 0;
+
   const handleMouseEnter = () => {
     setIsHovered(true);
     if (videoRef.current) {
-      videoRef.current.currentTime = 0;
+      if (startTime > 0 && Math.abs(videoRef.current.currentTime - startTime) > 0.5 && !isHovered) {
+        videoRef.current.currentTime = startTime;
+      }
       videoRef.current.play().catch(() => {
         // Autoplay may be restricted if user hasn't interacted
       });
@@ -38,6 +42,9 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     setIsHovered(false);
     if (videoRef.current) {
       videoRef.current.pause();
+      if (startTime > 0) {
+        videoRef.current.currentTime = startTime;
+      }
     }
   };
 
@@ -67,7 +74,12 @@ export const GiftCard: React.FC<GiftCardProps> = ({
         {/* Live Video Stream Preview (Takes full stage when no poster image, or plays on hover) */}
         <video
           ref={videoRef}
-          src={gift.videoUrl ? `${gift.videoUrl}#t=0.001` : undefined}
+          src={gift.videoUrl ? `${gift.videoUrl}#t=${startTime > 0 ? startTime : 0.001}` : undefined}
+          onLoadedMetadata={(e) => {
+            if (startTime > 0) {
+              e.currentTarget.currentTime = startTime;
+            }
+          }}
           loop
           muted
           playsInline

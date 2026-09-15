@@ -39,7 +39,14 @@ import {
   Briefcase,
   X,
   Image as ImageIcon,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Camera,
+  Scissors,
+  Clock,
+  RotateCcw,
+  Crosshair,
+  Pause,
+  Loader2
 } from 'lucide-react';
 import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions } from '../types';
 import { translations } from '../utils/translations';
@@ -221,6 +228,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [videoUrl, setVideoUrl] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
   const [usePosterImage, setUsePosterImage] = useState<boolean>(true);
+  const [posterLoadError, setPosterLoadError] = useState(false);
+
+  useEffect(() => {
+    setPosterLoadError(false);
+  }, [posterUrl]);
   const [formatsText, setFormatsText] = useState('SVGA动效文件 (10MB), MP4带声音透明通道 (5.2MB), VAP特效 (12MB), PAG文件 (7MB)');
   const [category, setCategory] = useState<GiftItem['category']>('ancient');
   const [theme, setTheme] = useState('国风仙侠');
@@ -240,10 +252,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [newStaffBio, setNewStaffBio] = useState('');
   const [newStaffAvatar, setNewStaffAvatar] = useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80');
 
-  // Video Testing
+  // Video Testing & Snapshot Controls
   const [isTestingVideo, setIsTestingVideo] = useState(false);
   const [videoTestError, setVideoTestError] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const previewVideoRef = React.useRef<HTMLVideoElement | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(true);
+  const [videoScrubTime, setVideoScrubTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(14);
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
 
   // Manual Order Upload State
   const [isOrderFormOpen, setIsOrderFormOpen] = useState(false);
@@ -561,10 +578,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
     await updateEmployee(updatedStaff);
 
     // Update in local staff list (activeStaff will automatically update because it is derived from staffList)
-    setStaffList((prev) => prev.map((e) => (e.id === updatedStaff.id ? updatedStaff : e)));
+    setStaffList((prev) => {
+      const nextList = prev.map((e) => (e.id === updatedStaff.id ? updatedStaff : e));
+      try {
+        localStorage.setItem('jiawei_employees_v1', JSON.stringify(nextList));
+      } catch (err) {
+        console.error('Failed to cache employees in localStorage:', err);
+      }
+      return nextList;
+    });
 
     if (targetStaff.id === activeStaff?.id) {
       setAuthorName(profileName.trim());
+      // Also sync current logged-in user in localStorage if matching
+      try {
+        const savedUserStr = localStorage.getItem('jiawei_current_user_v1');
+        if (savedUserStr) {
+          const parsedUser = JSON.parse(savedUserStr);
+          if (parsedUser.id === updatedStaff.id || parsedUser.employeeId === updatedStaff.id) {
+            parsedUser.whatsapp = cleanWhatsapp;
+            parsedUser.name = updatedStaff.name;
+            localStorage.setItem('jiawei_current_user_v1', JSON.stringify(parsedUser));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync auth user in localStorage:', err);
+      }
     }
 
     // Update WhatsApp across ALL gifts created/uploaded by this user in local state
@@ -610,6 +649,117 @@ export const Dashboard: React.FC<DashboardProps> = ({
         : `WhatsApp number (${cleanWhatsapp}) confirmed and synced across all ${updatedGiftsCount} gifts!`
     );
     setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
+  // Capture snapshot from current video frame and automatically add to poster image field
+  const handleCaptureSnapshot = async () => {
+    if (!videoUrl) {
+      alert(lang === 'ar' ? 'يرجى وضع رابط الفيديو أو رفع ملفه أولاً' : 'Please provide or upload a video first');
+      return;
+    }
+
+    setIsCapturingSnapshot(true);
+    const vid = previewVideoRef.current;
+    if (vid) {
+      vid.pause();
+      setIsVideoPlaying(false);
+    }
+    const targetTime = vid ? (vid.currentTime || 0) : videoScrubTime || 0;
+
+    // Helper: draw video element to canvas and return base64
+    const drawVideoToDataUrl = (targetVideo: HTMLVideoElement): string => {
+      const canvas = document.createElement('canvas');
+      canvas.width = targetVideo.videoWidth || 720;
+      canvas.height = targetVideo.videoHeight || 1280;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Cannot get canvas context');
+      ctx.drawImage(targetVideo, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.95);
+    };
+
+    try {
+      let capturedDataUrl = '';
+
+      // Attempt 1: Direct capture from existing video if same-origin, blob, or host allows CORS
+      if (vid && vid.readyState >= 2) {
+        try {
+          capturedDataUrl = drawVideoToDataUrl(vid);
+        } catch (directErr) {
+          console.warn('Direct canvas draw tainted by CORS. Trying proxy fallback...', directErr);
+        }
+      }
+
+      // Attempt 2: If direct capture failed or threw SecurityError, use clean blob or /api/proxy-media
+      if (!capturedDataUrl) {
+        let blobUrl = '';
+        let isLocalBlob = false;
+
+        if (videoUrl.startsWith('blob:')) {
+          blobUrl = videoUrl;
+          isLocalBlob = true;
+        } else {
+          // Fetch through our local proxy endpoint which has full CORS permission
+          const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(videoUrl)}`;
+          const resp = await fetch(proxyUrl);
+          if (!resp.ok) {
+            throw new Error(`Media proxy returned HTTP ${resp.status}`);
+          }
+          const blob = await resp.blob();
+          blobUrl = URL.createObjectURL(blob);
+        }
+
+        // Create temporary offscreen video with clean blob
+        const tempVid = document.createElement('video');
+        tempVid.muted = true;
+        tempVid.playsInline = true;
+        tempVid.preload = 'auto';
+        tempVid.src = blobUrl;
+
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => resolve(), 4000);
+          tempVid.onloadedmetadata = () => {
+            tempVid.currentTime = Math.min(targetTime, tempVid.duration || targetTime);
+          };
+          tempVid.onseeked = () => {
+            clearTimeout(timeout);
+            resolve();
+          };
+          tempVid.onerror = (e) => {
+            clearTimeout(timeout);
+            reject(e);
+          };
+        });
+
+        capturedDataUrl = drawVideoToDataUrl(tempVid);
+
+        if (blobUrl && !isLocalBlob) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      }
+
+      if (capturedDataUrl) {
+        // Automatically populate the Poster Image box and enable it!
+        setPosterUrl(capturedDataUrl);
+        setUsePosterImage(true);
+        setSuccessMessage(
+          lang === 'ar'
+            ? `✓ تم التقاط لقطة الفيديو بنجاح عند (${targetTime.toFixed(1)} ث) وتعيينها كصورة غلاف للهدية في المتجر!`
+            : `✓ Snapshot captured at ${targetTime.toFixed(1)}s and applied as cover image!`
+        );
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        throw new Error('Frame extraction returned empty');
+      }
+    } catch (err: any) {
+      console.warn('Frame capture error:', err);
+      alert(
+        lang === 'ar'
+          ? '⚠️ تعذر التقاط الصورة تلقائياً من هذا الرابط الخارجي. يمكنك إما رفع ملف الفيديو مباشرة من جهازك عبر زر [رفع ملف فيديو]، أو اختيار صورة جاهزة من جهازك عبر زر [رفع صورة]!'
+          : 'Could not extract frame automatically from this URL. Please use [Upload Video File] or [Upload Image].'
+      );
+    } finally {
+      setIsCapturingSnapshot(false);
+    }
   };
 
   // Create New Staff Member (انشاء حساب موظف داخل المنصة)
@@ -1011,10 +1161,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
-                  <div className="flex items-center gap-1.5">
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-slate-400">{t.whatsappNumber}:</span>
-                    <span className="font-mono text-emerald-400 font-bold dir-ltr">{activeStaff.whatsapp || 'لم يحدد بعد'}</span>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40">
+                    <MessageCircle className="w-4 h-4 text-emerald-400" />
+                    <span className="text-slate-300 font-medium">{t.whatsappNumber}:</span>
+                    <span className="font-mono text-emerald-300 font-extrabold dir-ltr text-xs tracking-wider">
+                      {activeStaff.whatsapp || (lang === 'ar' ? 'لم يحدد بعد' : 'Not set')}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold ml-1">
+                      {lang === 'ar' ? '✓ يثبت تلقائياً في كل فيديو' : '✓ Auto-synced on all videos'}
+                    </span>
                   </div>
 
                   {activeStaff.whatsapp && (
@@ -1022,7 +1177,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       href={`https://wa.me/${activeStaff.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('مرحباً، أود الاستفسار عن تصاميم ومؤثرات الهدايا في متجر جياوي')}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 transition-colors"
+                      className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 transition-colors"
                       title={t.whatsappChat}
                     >
                       <MessageCircle className="w-3 h-3 text-emerald-400" />
@@ -1031,14 +1186,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   )}
 
                   <span className="text-slate-500 text-[11px]">|</span>
-                  <span className="text-slate-400 text-[11px]">{t.uploadedGifts}: <strong className="text-cyan-300">{activeStaff.giftsCount || 0}</strong></span>
+                  <span className="text-slate-400 text-[11px]">{t.uploadedGifts}: <strong className="text-cyan-300 font-bold">{activeStaff.giftsCount || 0}</strong></span>
                 </div>
 
-                <p className="text-[11px] text-slate-400">
-                  {lang === 'ar' 
-                    ? '⚡ جميع الهدايا التي ترفعها الآن سيتم تسجيلها وحفظها باسمك وبرقم الواتساب الخاص بك تلقائياً ليشتريها العملاء مباشرة.' 
-                    : '⚡ 您发布的素材将自动附加您的创作者信息与WhatsApp直连，买家可一键点击咨询。'}
-                </p>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="text-emerald-400">⚡</span>
+                  <p>
+                    {lang === 'ar' 
+                      ? 'رقم الواتساب ثابت ومثبت على حسابك تلقائياً: سيتم دمجه ونزوله مباشرة في كل فيديو ترفعه دون الحاجة لإدخاله يدوياً كل مرة.' 
+                      : '⚡ 您的WhatsApp号码已锁定并永久绑定，每次发布视频时将自动附加生效，无需重复手动输入。'}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1305,6 +1463,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         placeholder="https://images.unsplash.com/photo-xxx?w=800"
                         className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
                       />
+                      <button
+                        type="button"
+                        disabled={isCapturingSnapshot}
+                        onClick={handleCaptureSnapshot}
+                        className="px-3.5 py-2.5 rounded-xl bg-cyan-950/90 hover:bg-cyan-900 disabled:opacity-60 text-cyan-300 text-xs font-bold border border-cyan-500/50 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-all active:scale-95 shadow-sm"
+                        title={lang === 'ar' ? 'أخذ لقطة من الفيديو الحالي وتعيينها تلقائياً كصورة غلاف' : '截取当前视频帧作为封面'}
+                      >
+                        {isCapturingSnapshot ? (
+                          <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4 text-cyan-400" />
+                        )}
+                        <span>
+                          {isCapturingSnapshot
+                            ? (lang === 'ar' ? 'جارِ الالتقاط...' : '截图中...')
+                            : (lang === 'ar' ? 'أخذ لقطة من الفيديو' : '从视频截取')}
+                        </span>
+                      </button>
                       <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
                         <UploadCloud className="w-4 h-4 text-cyan-400" />
                         <span>{lang === 'ar' ? 'رفع صورة' : '上传图片'}</span>
@@ -1327,6 +1503,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         />
                       </label>
                     </div>
+
+                    {posterUrl && (
+                      <div className={`flex items-center gap-3 p-2.5 rounded-xl bg-slate-950/90 border shadow-inner ${
+                        posterLoadError ? 'border-amber-500/50' : 'border-emerald-500/40'
+                      }`}>
+                        {!posterLoadError ? (
+                          <img
+                            src={posterUrl}
+                            alt="Cover Thumbnail"
+                            onError={() => setPosterLoadError(true)}
+                            className="w-12 h-14 object-cover rounded-lg border border-emerald-500/60 shrink-0 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-12 h-14 rounded-lg bg-amber-950/60 border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
+                            <ImageIcon className="w-5 h-5 opacity-60" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          {posterLoadError ? (
+                            <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                              {lang === 'ar' ? 'تعذر تحميل رابط الصورة' : '图片链接无法加载'}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                              <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-400" />
+                              {lang === 'ar' ? '✓ تم تعيين صورة الغلاف بنجاح وربطها بالمتجر' : '✓ 封面图已成功就绪'}
+                            </span>
+                          )}
+                          <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
+                            {posterLoadError
+                              ? (lang === 'ar' ? 'اضغط [أخذ لقطة من الفيديو] أو [رفع صورة] لاستبدالها' : '请点击“从视频截取”或“上传图片”')
+                              : posterUrl.startsWith('data:')
+                              ? (lang === 'ar' ? '📷 لقطة مأخوذة من الفيديو (لقطة نقية)' : '📷 视频截取图像')
+                              : posterUrl}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPosterUrl('')}
+                          className="text-xs text-red-400 hover:text-red-300 hover:bg-red-950/40 px-2 py-1 rounded-lg border border-transparent hover:border-red-900 transition-colors"
+                          title={lang === 'ar' ? 'حذف الصورة' : '删除'}
+                        >
+                          {lang === 'ar' ? 'حذف' : '移除'}
+                        </button>
+                      </div>
+                    )}
+
                     <p className="text-[11px] text-slate-400">
                       {lang === 'ar'
                         ? 'ستظهر صورة الغلاف كواجهة أولية، وعند تمرير الماوس فوق الهدية يتم تشغيل الفيديو.'
@@ -1334,20 +1558,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900 to-slate-950 border border-cyan-500/40 flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 mt-0.5">
-                      <Video className="w-4 h-4" />
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900 to-slate-950 border border-cyan-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 mt-0.5">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <div className="text-xs leading-relaxed text-slate-300">
+                        <strong className="text-cyan-300 block mb-0.5">
+                          {lang === 'ar' ? '✓ تم تفعيل وضع الفيديو فقط (✕ إخفاء الصورة تماماً):' : '已开启仅视频模式 (✕ 隐藏封面图)：'}
+                        </strong>
+                        <span>
+                          {lang === 'ar'
+                            ? 'لن تظهر أي صورة غلاف، وسيأخذ الفيديو نفسه نفس الواجهة الرئيسية للهدية في شاشة العرض وبطاقة المتجر مباشرة.'
+                            : '卡片将完全不显示任何图片，直接呈现视频首帧作为主界面并自动生效。'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-xs leading-relaxed text-slate-300">
-                      <strong className="text-cyan-300 block mb-0.5">
-                        {lang === 'ar' ? '✓ تم تفعيل وضع الفيديو فقط (✕ إخفاء الصورة تماماً):' : '已开启仅视频模式 (✕ 隐藏封面图)：'}
-                      </strong>
-                      <span>
-                        {lang === 'ar'
-                          ? 'لن تظهر أي صورة غلاف، وسيأخذ الفيديو نفسه نفس الواجهة الرئيسية للهدية في شاشة العرض وبطاقة المتجر مباشرة.'
-                          : '卡片将完全不显示任何图片，直接呈现视频首帧作为主界面并自动生效。'}
-                      </span>
-                    </div>
+                    {videoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleCaptureSnapshot}
+                        className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 shrink-0 transition-transform active:scale-95 cursor-pointer whitespace-nowrap"
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span>{lang === 'ar' ? '📸 أخذ لقطة وتعيينها كصورة' : '📸 截取一帧设为图片'}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1447,6 +1683,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
+              {/* Automatic Phone / WhatsApp Attachment Status Badge */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white">
+                        {lang === 'ar' ? 'رقم الواتساب المثبت لهذا الفيديو:' : '已固定的收款与咨询WhatsApp:'}
+                      </span>
+                      <span className="font-mono text-emerald-400 font-extrabold text-xs bg-slate-950 px-2 py-0.5 rounded border border-emerald-500/30 dir-ltr">
+                        {activeStaff.whatsapp || (lang === 'ar' ? 'غير محدد بعد' : 'Not specified')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {lang === 'ar'
+                        ? '✓ سينزل هذا الرقم تلقائياً في بيانات الهدية دون الحاجة لإدخاله يدوياً كل مرة.'
+                        : '✓ 发布后此号码将自动作为作者直连与客服联系方式，无需每次手动键入。'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="self-start sm:self-center px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-semibold border border-emerald-500/30 hover:border-emerald-500/50 flex items-center gap-1.5 transition-colors shrink-0"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{lang === 'ar' ? 'تغيير أو تثبيت رقم آخر' : '更换固定的号码'}</span>
+                </button>
+              </div>
+
               {/* Action Buttons */}
               <div className="pt-3 flex items-center gap-3">
                 {(() => {
@@ -1505,18 +1774,63 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Video Monitor Box */}
-              <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl flex items-center justify-center">
+              <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl flex items-center justify-center group">
                 {videoUrl ? (
-                  <video
-                    key={videoUrl}
-                    src={videoUrl}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    onError={() => setVideoTestError(true)}
-                    className="w-full h-full object-contain"
-                  />
+                  <>
+                    <video
+                      key={videoUrl}
+                      ref={previewVideoRef}
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      onLoadedData={() => setVideoTestError(false)}
+                      onCanPlay={() => setVideoTestError(false)}
+                      onTimeUpdate={() => {
+                        if (previewVideoRef.current) {
+                          setVideoScrubTime(previewVideoRef.current.currentTime);
+                        }
+                      }}
+                      onLoadedMetadata={() => {
+                        if (previewVideoRef.current) {
+                          setVideoDuration(previewVideoRef.current.duration || 14);
+                        }
+                      }}
+                      onError={() => setVideoTestError(true)}
+                      className="w-full h-full object-contain cursor-pointer"
+                      onClick={() => {
+                        if (!previewVideoRef.current) return;
+                        if (isVideoPlaying) {
+                          previewVideoRef.current.pause();
+                          setIsVideoPlaying(false);
+                        } else {
+                          previewVideoRef.current.play().catch(() => {});
+                          setIsVideoPlaying(true);
+                        }
+                      }}
+                    />
+
+                    {/* Overlay Play Indicator when paused */}
+                    {!isVideoPlaying && (
+                      <div
+                        onClick={() => {
+                          if (previewVideoRef.current) {
+                            previewVideoRef.current.play().catch(() => {});
+                            setIsVideoPlaying(true);
+                          }
+                        }}
+                        className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center cursor-pointer transition-opacity"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-cyan-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur">
+                          <Play className="w-6 h-6 ml-0.5 fill-current" />
+                        </div>
+                        <span className="text-[11px] font-bold text-cyan-200 mt-2 bg-black/60 px-2 py-0.5 rounded-full">
+                          {lang === 'ar' ? 'الفيديو متوقف مؤقتاً' : '已暂停'}
+                        </span>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center p-4 text-slate-500 text-xs space-y-2">
                     <Video className="w-8 h-8 mx-auto opacity-40" />
@@ -1525,12 +1839,145 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 )}
 
                 {videoTestError && (
-                  <div className="absolute inset-0 bg-red-950/80 p-4 flex flex-col items-center justify-center text-center text-xs text-red-200">
-                    <AlertCircle className="w-6 h-6 mb-1 text-red-400" />
-                    <span>{lang === 'ar' ? 'تعذر تشغيل الفيديو من الرابط المحدد. تأكد من أن الرابط مباشر وينتهي بـ .mp4 أو .webm' : '视频直链解析失败，请检查链接格式'}</span>
+                  <div className="absolute inset-0 bg-red-950/85 p-4 flex flex-col items-center justify-center text-center text-xs text-red-200 z-10">
+                    <AlertCircle className="w-6 h-6 mb-1.5 text-red-400" />
+                    <span className="font-bold mb-1">
+                      {lang === 'ar' ? 'تعذر تشغيل الفيديو من الرابط المحدد' : 'Failed to load video'}
+                    </span>
+                    <span className="text-[10px] text-red-300/80 mb-2.5 max-w-[220px]">
+                      {lang === 'ar' ? 'تأكد من أن الرابط مباشر وينتهي بـ .mp4 أو .webm أو جرب رفع ملف الفيديو مباشرة' : 'Ensure direct MP4/WebM URL or upload file'}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideoTestError(false);
+                          if (previewVideoRef.current) {
+                            previewVideoRef.current.load();
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded bg-red-900 hover:bg-red-800 text-white text-[10px] font-bold"
+                      >
+                        {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVideoTestError(false)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
+                      >
+                        {lang === 'ar' ? 'تجاهل' : 'Dismiss'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Video Timeline Scrubber & Frame Snapshot Tool */}
+              {videoUrl && (
+                <div className="p-3.5 rounded-xl bg-slate-900/95 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-300 font-mono">
+                    <span className="text-cyan-400 font-bold">
+                      {Math.floor(videoScrubTime / 60)}:{Math.floor(videoScrubTime % 60).toString().padStart(2, '0')}.{Math.floor((videoScrubTime % 1) * 10)}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {lang === 'ar' ? 'أوقف الفيديو عند اللقطة المناسبة' : '定格最心仪的画面'}
+                    </span>
+                    <span className="text-slate-400">
+                      {Math.floor(videoDuration / 60)}:{Math.floor(videoDuration % 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+
+                  {/* Scrubber Range Bar */}
+                  <input
+                    type="range"
+                    min="0"
+                    max={videoDuration || 14}
+                    step="0.05"
+                    value={videoScrubTime}
+                    onChange={(e) => {
+                      const time = parseFloat(e.target.value);
+                      setVideoScrubTime(time);
+                      if (previewVideoRef.current) {
+                        previewVideoRef.current.currentTime = time;
+                      }
+                    }}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+
+                  {/* Transport Controls (Play/Pause & Steppers) */}
+                  <div className="flex items-center justify-between gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!previewVideoRef.current) return;
+                        if (isVideoPlaying) {
+                          previewVideoRef.current.pause();
+                          setIsVideoPlaying(false);
+                        } else {
+                          previewVideoRef.current.play().catch(() => {});
+                          setIsVideoPlaying(true);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-700 transition-colors"
+                    >
+                      {isVideoPlaying ? <Pause className="w-3.5 h-3.5 text-cyan-400" /> : <Play className="w-3.5 h-3.5 text-cyan-400" />}
+                      <span>{isVideoPlaying ? (lang === 'ar' ? 'إيقاف' : '暂停') : (lang === 'ar' ? 'تشغيل' : '播放')}</span>
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!previewVideoRef.current) return;
+                          previewVideoRef.current.pause();
+                          setIsVideoPlaying(false);
+                          const newTime = Math.max(0, previewVideoRef.current.currentTime - 0.5);
+                          previewVideoRef.current.currentTime = newTime;
+                          setVideoScrubTime(newTime);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700"
+                        title="-0.5s"
+                      >
+                        -0.5s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!previewVideoRef.current) return;
+                          previewVideoRef.current.pause();
+                          setIsVideoPlaying(false);
+                          const newTime = Math.min(videoDuration, previewVideoRef.current.currentTime + 0.5);
+                          previewVideoRef.current.currentTime = newTime;
+                          setVideoScrubTime(newTime);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700"
+                        title="+0.5s"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* HERO BUTTON: TAKE SNAPSHOT & ADD AUTOMATICALLY */}
+                  <button
+                    type="button"
+                    disabled={isCapturingSnapshot}
+                    onClick={handleCaptureSnapshot}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:opacity-60 text-white font-extrabold text-xs shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-98 cursor-pointer"
+                  >
+                    {isCapturingSnapshot ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4 stroke-[2.5]" />
+                    )}
+                    <span>
+                      {isCapturingSnapshot
+                        ? (lang === 'ar' ? 'جارِ التقاط الصورة من الفيديو...' : '正在截取视频帧...')
+                        : (lang === 'ar' ? '📸 أخذ لقطة وإضافتها تلقائياً لخانة الصورة' : '📸 截取当前帧自动填入封面')}
+                    </span>
+                  </button>
+                </div>
+              )}
 
               {/* Quick Info */}
               <div className="mt-4 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 space-y-1">
@@ -1541,7 +1988,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex justify-between">
                   <span>{lang === 'ar' ? 'المصدر المضيف:' : '视频数据源:'}</span>
                   <span className="text-cyan-300 truncate max-w-[140px] font-mono">
-                    {videoUrl ? (videoUrl.startsWith('blob:') ? 'Local File' : new URL(videoUrl).hostname) : 'External CDN'}
+                    {(() => {
+                      if (!videoUrl) return 'External CDN';
+                      if (videoUrl.startsWith('blob:')) return 'Local File';
+                      try { return new URL(videoUrl).hostname; } catch { return 'Custom URL'; }
+                    })()}
                   </span>
                 </div>
               </div>
@@ -1562,22 +2013,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="relative aspect-[4/5] w-full max-w-[200px] mx-auto rounded-xl overflow-hidden bg-slate-950 border border-slate-700 shadow-lg flex items-center justify-center">
-                  {usePosterImage && posterUrl ? (
+                  {usePosterImage && posterUrl && !posterLoadError ? (
                     <img
                       src={posterUrl}
                       alt="Cover Preview"
+                      onError={() => setPosterLoadError(true)}
                       className="w-full h-full object-cover"
                     />
                   ) : videoUrl ? (
-                    <video
-                      key={videoUrl}
-                      src={`${videoUrl}#t=0.001`}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
+                    <>
+                      <video
+                        key={videoUrl}
+                        src={`${videoUrl}#t=0.001`}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      {posterLoadError && usePosterImage && (
+                        <div className="absolute top-2 left-2 right-2 px-1.5 py-0.5 rounded bg-amber-950/90 text-[9px] text-amber-200 border border-amber-500/50 text-center z-10 shadow-sm">
+                          {lang === 'ar' ? 'تعذر تحميل الصورة - تم عرض الفيديو' : '图片无效，已回退至视频'}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-[11px] p-3 text-center">
                       <Video className="w-6 h-6 mb-1 opacity-40 text-cyan-400" />

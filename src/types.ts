@@ -17,6 +17,7 @@ export interface GiftItem {
   exclusivePrice: number; // 全网排他
   videoUrl: string; // Direct external video link (0 server bandwidth)
   posterUrl?: string; // Thumbnail / poster image (optional - if omitted, video acts as main showcase face)
+  previewStartTime?: number; // Second offset in video to start preview / capture cover from (e.g., 1.5s, 3s)
   formats: GiftFormat[];
   tags: string[]; // e.g. ['AI原创', '浪漫', '礼物', '2D', '热销']
   category: string; // 'general' (القسم العام) or custom category created by admin
