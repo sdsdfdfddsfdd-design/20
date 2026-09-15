@@ -111,27 +111,46 @@ export const GiftModal: React.FC<GiftModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-hidden"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/90 sm:bg-black/85 backdrop-blur-md overflow-hidden"
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-5xl h-[92vh] md:h-[660px] bg-[#0d111a] rounded-2xl border border-slate-700/80 shadow-2xl overflow-hidden flex flex-col my-auto"
+        className="relative w-full max-w-5xl h-[94vh] sm:h-[90vh] md:h-[660px] bg-[#0d111a] rounded-t-3xl sm:rounded-2xl border border-slate-700/80 shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
+        {/* Mobile Header Bar & Close Button */}
+        <div className="flex sm:hidden items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 shrink-0 z-30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-bold text-white truncate max-w-[200px]">
+              {displayTitle}
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700 shrink-0">
+              {gift.id}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Desktop Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-2.5 right-2.5 z-30 p-2 rounded-full bg-black/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 transition-colors shadow-lg"
+          className="hidden sm:flex absolute top-2.5 right-2.5 z-30 p-2 rounded-full bg-black/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 transition-colors shadow-lg"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Modal Content Grid: Strictly 2 columns on tablets/desktop (md:grid-cols-12), stacked on mobile */}
-        <div className="grid grid-cols-1 md:grid-cols-12 flex-1 min-h-0 overflow-hidden">
+        {/* Modal Content Grid: 2 columns on desktop (md:grid-cols-12), stacked and scrollable on mobile */}
+        <div className="flex-1 flex flex-col md:grid md:grid-cols-12 min-h-0 overflow-hidden">
           
-          {/* LEFT: Video Player Stage (Takes 7 columns on md+, compact on mobile) */}
-          <div className="md:col-span-7 bg-black p-3 sm:p-4 flex flex-col justify-between items-center relative border-b md:border-b-0 md:border-r border-slate-800 shrink-0 h-[260px] sm:h-[320px] md:h-full overflow-hidden">
+          {/* LEFT: Video Player Stage (Compact and perfectly proportioned on mobile) */}
+          <div className="md:col-span-7 bg-black p-2.5 sm:p-4 flex flex-col justify-between items-center relative border-b md:border-b-0 md:border-r border-slate-800 shrink-0 h-[210px] sm:h-[280px] md:h-full overflow-hidden">
             
             {/* Top Toolbar / Background Simulator */}
             <div className="w-full flex items-center justify-between mb-2 z-10 shrink-0">

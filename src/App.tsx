@@ -411,7 +411,7 @@ ID الحساب: ${user.id}` : ''}
           />
 
           {/* Center / Right Content Canvas */}
-          <main className="flex-1 min-w-0 p-4 lg:p-6">
+          <main className="flex-1 min-w-0 p-3 sm:p-4 lg:p-6">
             {/* Top Carousel Banner Showcase */}
             <HeroBanners
               lang={lang}
@@ -452,7 +452,7 @@ ID الحساب: ${user.id}` : ''}
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-4">
                 {filteredGifts.map((gift) => (
                   <GiftCard
                     key={gift.id}

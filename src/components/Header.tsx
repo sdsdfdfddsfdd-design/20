@@ -272,10 +272,19 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Login / Register Button */}
               <button
                 onClick={() => setIsAuthOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs text-white font-bold shadow-md shadow-cyan-900/30 transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs text-white font-bold shadow-md shadow-cyan-900/30 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'تسجيل الدخول / حساب جديد' : t.login}</span>
+                <span>
+                  {lang === 'ar' ? (
+                    <>
+                      <span className="sm:hidden">تسجيل الدخول</span>
+                      <span className="hidden sm:inline">تسجيل الدخول / حساب جديد</span>
+                    </>
+                  ) : (
+                    t.login
+                  )}
+                </span>
               </button>
             </div>
           )}

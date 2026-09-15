@@ -43,15 +43,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const t = translations[lang];
 
   return (
-    <div className="bg-[#10141e]/90 border border-slate-800/80 rounded-xl p-3 mb-5 space-y-3">
-      {/* Filters Row - exact match to video bar */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+    <div className="bg-[#10141e]/90 border border-slate-800/80 rounded-xl p-2.5 sm:p-3 mb-5 space-y-2.5 sm:space-y-3">
+      {/* Filters Row - exact match to video bar with mobile fluidity */}
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs">
         {/* Sort Rule */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[120px]">
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="default">{t.sortDefault}</option>
             <option value="newest">{t.sortNewest}</option>
@@ -63,11 +63,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* Category: Dynamic from admin (starting with 'القسم العام') */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[120px]">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="all">{lang === 'ar' ? 'جميع الأقسام' : '所有分类'}</option>
             {categories.map((cat) => (
@@ -80,11 +80,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* Price Range */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[110px]">
           <select
             value={priceFilter}
             onChange={(e) => setPriceFilter(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="all">{t.priceFilter}: {t.catAll}</option>
             <option value="under100">¥ 100 以下</option>
@@ -96,11 +96,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* AI Filter */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[100px]">
           <select
             value={aiFilter}
             onChange={(e) => setAiFilter(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="all">{t.aiFilter}: {t.aiAll}</option>
             <option value="ai">{t.aiOriginal}</option>
@@ -110,11 +110,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* Effect 2D / 3D */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[90px]">
           <select
             value={effectType}
             onChange={(e) => setEffectType(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="all">{t.effect}: {t.effectAll}</option>
             <option value="2D">{t.effect2D}</option>
@@ -124,11 +124,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* Format */}
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-initial min-w-[100px]">
           <select
             value={selectedFormat}
             onChange={(e) => setSelectedFormat(e.target.value)}
-            className="appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+            className="w-full appearance-none bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 pr-6 sm:pr-7 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium text-xs"
           >
             <option value="all">{t.format}: {t.formatAll}</option>
             <option value="SVGA">SVGA动效</option>
@@ -142,7 +142,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         {/* Reset Button */}
         <button
           onClick={onReset}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors ml-auto font-medium"
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors sm:ml-auto font-medium text-xs shrink-0"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>{t.reset}</span>

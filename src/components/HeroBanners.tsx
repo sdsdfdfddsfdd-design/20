@@ -234,14 +234,14 @@ export const HeroBanners: React.FC<HeroBannersProps> = ({
         </div>
       </div>
 
-      {/* Dynamic Categories & Quick Feature Badges Row */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Dynamic Categories & Quick Feature Badges Row - Smooth horizontal scroll on mobile, flex-wrap on desktop */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none sm:flex-wrap">
         {/* VIP Section Button */}
         <button
           onClick={() => onSelectQuickCategory('vip')}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-600/20 text-amber-300 border border-amber-500/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-95 text-xs font-semibold cursor-pointer"
+          className="shrink-0 flex items-center gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-600/20 text-amber-300 border border-amber-500/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-95 text-xs font-semibold cursor-pointer whitespace-nowrap"
         >
-          <Crown className="w-4 h-4" />
+          <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
           <span>{lang === 'ar' ? 'منطقة VIP' : 'VIP 专区'}</span>
         </button>
 
@@ -253,16 +253,16 @@ export const HeroBanners: React.FC<HeroBannersProps> = ({
             <button
               key={cat.id}
               onClick={() => onSelectQuickCategory(cat.id === 'general' ? 'all' : cat.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-200 hover:scale-[1.02] text-xs font-semibold cursor-pointer ${
+              className={`shrink-0 flex items-center gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border transition-all duration-200 hover:scale-[1.02] text-xs font-semibold cursor-pointer whitespace-nowrap ${
                 isSelected
                   ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-md shadow-cyan-500/20'
                   : `bg-gradient-to-r ${colorClass} hover:border-slate-500`
               }`}
             >
               {cat.id === 'general' ? (
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               ) : (
-                <Layers className="w-4 h-4" />
+                <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               )}
               <span>{cat.name}</span>
             </button>
@@ -272,9 +272,9 @@ export const HeroBanners: React.FC<HeroBannersProps> = ({
         {/* Request Custom Design Button */}
         <button
           onClick={onOpenCustomDesignModal}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600/20 to-indigo-600/20 text-blue-300 border border-blue-500/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-95 text-xs font-semibold cursor-pointer mr-auto"
+          className="shrink-0 flex items-center gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600/20 to-indigo-600/20 text-blue-300 border border-blue-500/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-95 text-xs font-semibold cursor-pointer whitespace-nowrap sm:mr-auto"
         >
-          <Palette className="w-4 h-4" />
+          <Palette className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>{lang === 'ar' ? 'طلب تصميم خاص' : '定制动效'}</span>
         </button>
       </div>
