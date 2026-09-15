@@ -156,7 +156,15 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right Nav & Action Buttons */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {/* Dashboard / Store Toggle Button - ONLY SHOW IF HAS PERMISSION OR IS ADMIN */}
-          {user && (user.role === 'admin' || user.role === 'employee' || user.role === 'designer' || user.permissions?.giftUploadAndPublish) && (
+          {user && (
+            user.role === 'admin' || 
+            user.role === 'designer' || 
+            user.permissions?.giftUploadAndPublish || 
+            user.permissions?.viewOrders || 
+            user.permissions?.manageAccounts || 
+            user.permissions?.manageBanners || 
+            user.permissions?.manageSettings
+          ) && (
             <button
               onClick={handleDashboardClick}
               className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
@@ -197,20 +205,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Headphones className="w-3.5 h-3.5" />
             <span>{t.customerService}</span>
-          </button>
-
-          {/* Cart Icon */}
-          <button
-            onClick={() => setIsCartOpen(true)}
-            className="relative p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition-colors"
-            aria-label={t.cart}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            {cartItems.length > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold flex items-center justify-center px-1 shadow">
-                {cartItems.length}
-              </span>
-            )}
           </button>
 
           {/* Language Switcher */}

@@ -128,9 +128,9 @@ export const GiftCard: React.FC<GiftCardProps> = ({
                 e.stopPropagation();
                 onQuickBuy(gift);
               }}
-              className="flex-1 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-cyan-500/20"
+              className="flex-1 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-emerald-500/20"
             >
-              <ShoppingCart className="w-3.5 h-3.5" />
+              <MessageCircle className="w-3.5 h-3.5" />
               <span>{t.buyNowBtn}</span>
             </button>
           </div>

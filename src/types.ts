@@ -91,6 +91,7 @@ export interface UserPermissions {
   manageAccounts?: boolean;       // إدارة وتفعيل الحسابات
   manageBanners?: boolean;        // إدارة البنرات الإعلانية
   viewOrders?: boolean;           // عرض سجل الطلبات والمبيعات
+  manageSettings?: boolean;       // إدارة إعدادات الموقع والأقسام
 }
 
 export type UserRole = 'buyer' | 'designer' | 'employee' | 'admin';

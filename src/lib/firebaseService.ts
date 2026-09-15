@@ -238,6 +238,22 @@ export async function toggleEmployeeStatus(id: string, status: 'active' | 'inact
   }
 }
 
+export async function updateEmployeePermissions(id: string, permissions: Partial<UserPermissions>, role: UserRole = 'employee') {
+  try {
+    await ensureFirebaseAuth();
+    const colName = (role === 'designer' || role === 'admin' || role === 'employee') 
+      ? 'employees' 
+      : 'users';
+    const empRef = doc(db, colName, id);
+    
+    // We update the permissions object inside the document
+    await setDoc(empRef, { permissions }, { merge: true });
+  } catch (error) {
+    console.error('Error updating employee permissions:', handleFirestoreError(error));
+    throw error;
+  }
+}
+
 export async function toggleEmployeeGiftPermission(id: string, canUpload: boolean, role: UserRole = 'employee') {
   try {
     await ensureFirebaseAuth();

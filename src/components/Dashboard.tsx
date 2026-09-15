@@ -56,6 +56,7 @@ import {
   deleteEmployee, 
   toggleEmployeeStatus,
   toggleEmployeeGiftPermission,
+  updateEmployeePermissions,
   addDelivery, 
   deleteDelivery,
   saveCategory,
@@ -154,12 +155,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ? (staffList.find((e) => e.id === currentEmpId) || staffList[0]) 
     : (currentUser as unknown as EmployeeUser) || staffList[0];
 
-  // If non-admin user lands here, ensure activeTab is one they have access to
+  const currentUserPermissions = (currentUser as unknown as EmployeeUser)?.permissions || {};
+  const isSuperAdmin = currentUser?.role === 'admin';
+
+  const canManageGifts = isSuperAdmin || currentUserPermissions.giftUploadAndPublish !== false;
+  const canManageAccounts = isSuperAdmin || currentUserPermissions.manageAccounts;
+  const canManageBanners = isSuperAdmin || currentUserPermissions.manageBanners;
+  const canViewOrders = isSuperAdmin || currentUserPermissions.viewOrders;
+  const canManageSettings = isSuperAdmin || currentUserPermissions.manageSettings;
+
+  // If user lands here, ensure activeTab is one they have access to
   useEffect(() => {
-    if (!isAdmin && activeTab !== 'create' && activeTab !== 'list') {
-      setActiveTab('create');
+    if (!isAdmin) {
+      if (activeTab !== 'create' && activeTab !== 'list') setActiveTab('create');
+    } else {
+      if (!canManageGifts && (activeTab === 'create' || activeTab === 'list')) {
+        if (canViewOrders) setActiveTab('orders');
+        else if (canManageAccounts) setActiveTab('staff');
+        else setActiveTab('settings');
+      }
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, activeTab, canManageGifts, canViewOrders, canManageAccounts]);
 
   // First-Time Profile Setup Modal State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -601,10 +617,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Toggle Account Active / Inactive Status (تفعيل أو إلغاء تفعيل الحساب)
-  const handleToggleStaffStatus = async (empId: string, currentStatus: 'active' | 'inactive') => {
+  const handleToggleStaffStatus = async (empId: string, currentStatus: 'active' | 'inactive', role: UserRole) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     try {
-      await toggleEmployeeStatus(empId, newStatus);
+      await toggleEmployeeStatus(empId, newStatus, role);
       setStaffList((prev) => prev.map((e) => e.id === empId ? { ...e, status: newStatus } : e));
       setSuccessMessage(
         lang === 'ar'
@@ -618,32 +634,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // Toggle Gift Upload & Publishing Permission (تفعيل أو سحب صلاحية رفع ونشر الهدايا)
-  const handleToggleGiftPermission = async (empId: string, currentPerm: boolean) => {
-    const newPerm = !currentPerm;
+  // Toggle specific permission
+  const handleTogglePermission = async (empId: string, permKey: keyof UserPermissions, currentValue: boolean, role: UserRole) => {
+    const newValue = !currentValue;
     try {
-      await toggleEmployeeGiftPermission(empId, newPerm);
-      setStaffList((prev) => prev.map((e) => e.id === empId ? {
-        ...e,
-        permissions: {
-          ...(e.permissions || {
-            giftUploadAndPublish: false,
-            manageAccounts: false,
-            manageBanners: false,
-            viewOrders: true
-          }),
-          giftUploadAndPublish: newPerm
-        }
-      } : e));
+      // Find the employee to get current permissions
+      const emp = staffList.find(e => e.id === empId);
+      if (!emp) return;
+      
+      const newPermissions = {
+        ...(emp.permissions || {
+          giftUploadAndPublish: false,
+          manageAccounts: false,
+          manageBanners: false,
+          viewOrders: false,
+          manageSettings: false
+        }),
+        [permKey]: newValue
+      };
+
+      await updateEmployeePermissions(empId, newPermissions, role);
+      setStaffList((prev) => prev.map((e) => e.id === empId ? { ...e, permissions: newPermissions } : e));
       setSuccessMessage(
         lang === 'ar'
-          ? `تم تحديث صلاحية [رفع ونشر الهدايا] للموظف: ${newPerm ? 'ممنوحة ومفعلة بنجاح ✅' : 'مسحوبة وموقوفة ❌'}`
-          : `礼品上传与发布权限已更新: ${newPerm ? '已开启' : '已关闭'}`
+          ? `تم تحديث الصلاحيات بنجاح`
+          : `Permissions updated successfully`
       );
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error(err);
-      alert(lang === 'ar' ? 'حدث خطأ أثناء تعديل صلاحية رفع ونشر الهدايا' : '更新上传权限失败');
+      alert(lang === 'ar' ? 'حدث خطأ أثناء تعديل الصلاحيات' : 'Failed to update permissions');
     }
   };
 
@@ -746,37 +766,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs font-semibold overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('create')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeTab === 'create'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>{editingId ? (lang === 'ar' ? 'تعديل الهدية' : '编辑礼物素材') : t.addNewGift}</span>
-        </button>
+        {canManageGifts && (
+          <>
+            <button
+              onClick={() => setActiveTab('create')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'create'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{editingId ? (lang === 'ar' ? 'تعديل الهدية' : '编辑礼物素材') : t.addNewGift}</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('list')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeTab === 'list'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>{t.manageGifts} ({gifts.length})</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('list')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                activeTab === 'list'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>{t.manageGifts} ({gifts.length})</span>
+            </button>
+          </>
+        )}
 
-        {isAdmin && (
+        {(isAdmin && canViewOrders) && (
           <button
             onClick={() => setActiveTab('orders')}
             className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
               activeTab === 'orders'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
             }`}
           >
             <PackageCheck className="w-4 h-4" />
@@ -786,65 +810,73 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {isAdmin && (
           <>
-            <button
-              onClick={() => setActiveTab('staff')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'staff'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <UserCheck className="w-4 h-4 text-emerald-400" />
-              <span>{lang === 'ar' ? 'إدارة الحسابات والصلاحيات' : t.staffManagement} ({staffList.length})</span>
-            </button>
+            {canManageAccounts && (
+              <button
+                onClick={() => setActiveTab('staff')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                  activeTab === 'staff'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <UserCheck className="w-4 h-4 text-emerald-400" />
+                <span>{lang === 'ar' ? 'إدارة الحسابات والصلاحيات' : t.staffManagement} ({staffList.length})</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('banners')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'banners'
-                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4 text-purple-400" />
-              <span>{lang === 'ar' ? 'إدارة البنرات (Banners)' : '横幅广告管理'} ({bannersList.length})</span>
-            </button>
+            {canManageBanners && (
+              <button
+                onClick={() => setActiveTab('banners')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'banners'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4 text-purple-400" />
+                <span>{lang === 'ar' ? 'إدارة البنرات (Banners)' : '横幅广告管理'} ({bannersList.length})</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('guide')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'guide'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-              <span>{t.cdnGuide}</span>
-            </button>
+            {canManageSettings && (
+              <>
+                <button
+                  onClick={() => setActiveTab('guide')}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                    activeTab === 'guide'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>{t.cdnGuide}</span>
+                </button>
 
-            <button
-              onClick={() => setActiveTab('categories')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'categories'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Layers className="w-4 h-4 text-emerald-400" />
-              <span>{lang === 'ar' ? 'إدارة الأقسام' : '分类管理'}</span>
-            </button>
+                <button
+                  onClick={() => setActiveTab('categories')}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                    activeTab === 'categories'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Layers className="w-4 h-4 text-emerald-400" />
+                  <span>{lang === 'ar' ? 'إدارة الأقسام' : '分类管理'}</span>
+                </button>
 
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === 'settings'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
-              <span>{lang === 'ar' ? 'إعدادات الموقع' : '网站设置'}</span>
-            </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+                    activeTab === 'settings'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+                  <span>{lang === 'ar' ? 'إعدادات الموقع' : '网站设置'}</span>
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -2087,9 +2119,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         onChange={(e) => setNewStaffRole(e.target.value as any)}
                         className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
                       >
+                        <option value="buyer">{lang === 'ar' ? 'مستخدم / مشتري' : 'Buyer'}</option>
                         <option value="designer">{t.designerRole}</option>
-                        <option value="admin">{t.adminRole}</option>
-                        <option value="employee">{lang === 'ar' ? 'موظف دعم / عمليات' : 'Employee'}</option>
+                        <option value="employee">{lang === 'ar' ? 'موظف / مشرف' : 'Employee'}</option>
+                        {isSuperAdmin && <option value="admin">{t.adminRole}</option>}
                       </select>
                     </div>
 
@@ -2363,10 +2396,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none"
                                       title={lang === 'ar' ? 'تغيير الوظيفة والصلاحيات' : 'Change Role'}
                                     >
-                                      <option value="admin">{t.adminRole}</option>
+                                      <option value="buyer">{lang === 'ar' ? 'مستخدم عادي / مشتري' : 'Buyer'}</option>
                                       <option value="designer">{t.designerRole}</option>
                                       <option value="employee">{lang === 'ar' ? 'موظف' : 'Employee'}</option>
-                                      <option value="buyer">{lang === 'ar' ? 'مستخدم عادي / مشتري' : 'Buyer'}</option>
+                                      {isSuperAdmin && <option value="admin">{t.adminRole}</option>}
                                     </select>
 
                                     {/* Active Account Status Badge */}
@@ -2443,51 +2476,50 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </div>
                             </div>
 
-                            {/* Permission Management Box (صلاحية رفع ونشر الهدايا - Gift Upload & Publishing Permission) */}
-                            <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                                  <span className="text-xs font-bold text-white">
-                                    {lang === 'ar' ? 'صلاحية رفع ونشر الهدايا (Gift Upload Permission):' : 'Gift Upload Permission:'}
-                                  </span>
-                                  {hasUploadPermission ? (
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-                                      {lang === 'ar' ? 'مفعلة ومصرح له ✅' : 'Granted'}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                                      {lang === 'ar' ? 'مسحوبة / غير مصرح ⛔' : 'Revoked'}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-slate-400">
-                                  {hasUploadPermission
-                                    ? (lang === 'ar' ? 'يستطيع هذا الحساب رفع مقاطع الهدايا ونشرها للبيع على الموقع مباشرة.' : 'User can upload and publish new gifts to store.')
-                                    : (lang === 'ar' ? 'تم سحب الصلاحية؛ لن يستطيع هذا الحساب إضافة أو نشر أي هدايا جديدة.' : 'User cannot upload gifts.')}
-                                </p>
+                            {/* Detailed Permissions Management */}
+                            <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                              <div className="flex items-center gap-1.5 border-b border-slate-800/80 pb-2">
+                                <Sparkles className="w-4 h-4 text-cyan-400" />
+                                <span className="text-xs font-bold text-white">
+                                  {lang === 'ar' ? 'الصلاحيات الممنوحة لهذا المشرف:' : 'Account Permissions:'}
+                                </span>
                               </div>
-
-                              {/* Toggle Permission Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleToggleGiftPermission(emp.id, emp.permissions?.giftUploadAndPublish !== false, emp.role)}
-                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                                  emp.permissions?.giftUploadAndPublish !== false
-                                    ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
-                                    : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border-purple-500/40'
-                                }`}
-                              >
-                                {emp.permissions?.giftUploadAndPublish !== false ? (
-                                  <>
-                                    <span>سحب صلاحية الرفع 🚫</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>منح صلاحية الرفع ✅</span>
-                                  </>
-                                )}
-                              </button>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                {[
+                                  { id: 'giftUploadAndPublish', label: lang === 'ar' ? 'إدارة ورفع الهدايا' : 'Manage Gifts' },
+                                  { id: 'viewOrders', label: lang === 'ar' ? 'مشاهدة الطلبات' : 'View Orders' },
+                                  { id: 'manageAccounts', label: lang === 'ar' ? 'إدارة الحسابات' : 'Manage Accounts' },
+                                  { id: 'manageBanners', label: lang === 'ar' ? 'إدارة البنرات' : 'Manage Banners' },
+                                  { id: 'manageSettings', label: lang === 'ar' ? 'إعدادات الموقع' : 'Site Settings' },
+                                ].map((perm) => (
+                                  <label key={perm.id} className="flex items-center gap-2 cursor-pointer group">
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                      emp.permissions?.[perm.id as keyof UserPermissions] !== false && (perm.id === 'giftUploadAndPublish' || emp.permissions?.[perm.id as keyof UserPermissions])
+                                        ? 'bg-cyan-500 border-cyan-500' 
+                                        : 'bg-slate-800 border-slate-700 group-hover:border-cyan-500/50'
+                                    }`}>
+                                      {(emp.permissions?.[perm.id as keyof UserPermissions] !== false && (perm.id === 'giftUploadAndPublish' || emp.permissions?.[perm.id as keyof UserPermissions])) && (
+                                        <Check className="w-3 h-3 text-black stroke-[3]" />
+                                      )}
+                                    </div>
+                                    <input 
+                                      type="checkbox" 
+                                      className="hidden"
+                                      checked={emp.permissions?.[perm.id as keyof UserPermissions] !== false && (perm.id === 'giftUploadAndPublish' || emp.permissions?.[perm.id as keyof UserPermissions]) ? true : false}
+                                      onChange={() => {
+                                        // Default for giftUploadAndPublish is true if undefined, others false
+                                        let currentVal = emp.permissions?.[perm.id as keyof UserPermissions];
+                                        if (currentVal === undefined) {
+                                          currentVal = perm.id === 'giftUploadAndPublish' ? true : false;
+                                        }
+                                        handleTogglePermission(emp.id, perm.id as keyof UserPermissions, Boolean(currentVal), emp.role);
+                                      }}
+                                    />
+                                    <span className="text-[11px] text-slate-300 group-hover:text-white transition-colors">{perm.label}</span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
 
                             {/* Staff Login Credentials (Email & Password) */}

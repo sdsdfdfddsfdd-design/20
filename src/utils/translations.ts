@@ -276,7 +276,7 @@ export const translations = {
     exclusiveLabel: 'حقوق حصرية',
     viewDetails: 'معاينة وتشغيل الهدية',
     addToCartBtn: 'إضافة للسلة',
-    buyNowBtn: 'شراء الآن',
+    buyNowBtn: 'شراء عبر WhatsApp',
 
     // Modal
     toolBadge: 'أداة معالجة وفحص ملفات الحركة',

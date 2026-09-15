@@ -234,15 +234,30 @@ export default function App() {
     setSearchQuery('');
   };
 
+  const generateWhatsAppLink = (gift: GiftItem, quantity: number = 1) => {
+    const phone = siteSettings?.whatsapp || gift.author?.whatsapp || '+966500000000';
+    const total = gift.price * quantity;
+    
+    // Arabic Message
+    const messageAr = `مرحبًا، أريد شراء هذه الهدية من الموقع.
+
+اسم الهدية: ${gift.titleAr || gift.title}
+ID الهدية: ${gift.id}
+السعر: $${gift.price}
+الكمية: ${quantity}
+الإجمالي: $${total}
+${user ? `
+اسم الحساب: ${user.name}
+ID الحساب: ${user.id}` : ''}
+`;
+
+    const encodedMessage = encodeURIComponent(messageAr);
+    return `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodedMessage}`;
+  };
+
   const handleAddToCart = (gift: GiftItem) => {
-    const newItem: CartItem = {
-      gift,
-      format: gift.formats[0]?.name || 'SVGA全套',
-      licenseType: 'standard',
-      price: gift.price
-    };
-    setCartItems((prev) => [...prev, newItem]);
-    setIsCartOpen(true);
+    // Instead of cart, direct to WhatsApp as requested
+    window.open(generateWhatsAppLink(gift, 1), '_blank');
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -251,25 +266,32 @@ export default function App() {
 
   // Purchase Gate: User must log in / create account before purchasing, but can explore freely
   const handleInitiatePurchase = (gift: GiftItem) => {
-    if (!user) {
-      setPendingPurchaseGift(gift);
-      setAuthInitialRole('buyer');
-      setIsAuthOpen(true);
-      return;
-    }
-    setPurchaseGift(gift);
+    window.open(generateWhatsAppLink(gift, 1), '_blank');
   };
 
   const handleCheckoutAll = () => {
     if (cartItems.length === 0) return;
-    setIsCartOpen(false);
-    if (!user) {
-      setPendingPurchaseGift(cartItems[0].gift);
-      setAuthInitialRole('buyer');
-      setIsAuthOpen(true);
-      return;
+    
+    // Group all cart items into one WhatsApp message
+    const phone = siteSettings?.whatsapp || '+966500000000';
+    let totalAll = 0;
+    
+    let messageAr = `مرحبًا، أريد شراء هذه الهدايا من الموقع.\n\n`;
+    
+    cartItems.forEach((item, index) => {
+      totalAll += item.price;
+      messageAr += `${index + 1}. ${item.gift.titleAr || item.gift.title} (ID: ${item.gift.id}) - $${item.price}\n`;
+    });
+    
+    messageAr += `\nالإجمالي الكلي: $${totalAll}\n`;
+    if (user) {
+      messageAr += `\nاسم الحساب: ${user.name}\nID الحساب: ${user.id}\n`;
     }
-    setPurchaseGift(cartItems[0].gift);
+
+    const encodedMessage = encodeURIComponent(messageAr);
+    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodedMessage}`, '_blank');
+    setIsCartOpen(false);
+    setCartItems([]);
   };
 
   const handleAuthSuccess = (authUser: AuthUser) => {
