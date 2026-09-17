@@ -1,10 +1,11 @@
-import { collection, getDocs, doc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, ensureFirebaseAuth } from './firebase';
-import { GiftItem, DeliveryItem, EmployeeUser, HeroBannerItem, CustomCategory, SiteSettings, UserRole, UserPermissions } from '../types';
+import { GiftItem, DeliveryItem, EmployeeUser, HeroBannerItem, CustomCategory, SiteSettings, UserRole, UserPermissions, SavedGiftName } from '../types';
 import { INITIAL_GIFTS } from '../data/initialGifts';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
 import { INITIAL_CATEGORIES } from '../data/initialCategories';
+import { INITIAL_SAVED_GIFT_NAMES } from '../data/initialSavedNames';
 import { handleFirestoreError } from './firebaseErrors';
 
 export const collections = {
@@ -75,6 +76,21 @@ export async function seedDatabase() {
     if (settingsSnapshot.empty) {
       console.log('Seeding default site settings into Firestore...');
       await setDoc(settingsDoc, DEFAULT_SITE_SETTINGS);
+    }
+
+    // 6. Seed saved gift names presets if not yet initialized
+    try {
+      const namesDoc = doc(db, 'settings', 'gift_names_presets');
+      const namesSnap = await getDoc(namesDoc);
+      if (!namesSnap.exists()) {
+        console.log('Seeding initial saved gift names into Firestore...');
+        await setDoc(namesDoc, {
+          names: INITIAL_SAVED_GIFT_NAMES,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (presetErr) {
+      console.warn('Note on gift names preset check:', presetErr);
     }
   } catch (error) {
     console.error('Error seeding database:', handleFirestoreError(error));
@@ -466,4 +482,113 @@ export async function saveSiteSettings(settings: SiteSettings) {
     throw error;
   }
 }
+
+// ----------------- SAVED GIFT NAMES PRESETS (PERSISTENT IN FIRESTORE & LOCAL) -----------------
+export function subscribeToSavedGiftNames(callback: (names: SavedGiftName[]) => void) {
+  const namesDocRef = doc(db, 'settings', 'gift_names_presets');
+  return onSnapshot(namesDocRef, (docSnap) => {
+    if (docSnap.exists() && docSnap.data()?.names && Array.isArray(docSnap.data().names)) {
+      const items = docSnap.data().names as SavedGiftName[];
+      callback(items);
+      try {
+        localStorage.setItem('jiawei_saved_gift_names_v1', JSON.stringify(items));
+      } catch (e) {}
+    } else {
+      const local = localStorage.getItem('jiawei_saved_gift_names_v1');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            callback(parsed);
+            return;
+          }
+        } catch (e) {}
+      }
+      callback(INITIAL_SAVED_GIFT_NAMES);
+    }
+  }, (error) => {
+    console.error('Error subscribing to saved gift names:', handleFirestoreError(error));
+    const local = localStorage.getItem('jiawei_saved_gift_names_v1');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          callback(parsed);
+          return;
+        }
+      } catch (e) {}
+    }
+    callback(INITIAL_SAVED_GIFT_NAMES);
+  });
+}
+
+export async function saveGiftNamesList(names: SavedGiftName[]) {
+  try {
+    // 1. Immediately cache locally
+    localStorage.setItem('jiawei_saved_gift_names_v1', JSON.stringify(names));
+    
+    // 2. Persist in cloud Firestore
+    await ensureFirebaseAuth();
+    const namesDocRef = doc(db, 'settings', 'gift_names_presets');
+    await setDoc(namesDocRef, {
+      names: sanitizeData(names),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error saving gift names list:', handleFirestoreError(error));
+    // Still keep in localStorage even if cloud network hiccups
+    localStorage.setItem('jiawei_saved_gift_names_v1', JSON.stringify(names));
+    throw error;
+  }
+}
+
+export async function addSavedGiftName(item: { title: string; titleAr?: string }): Promise<SavedGiftName> {
+  const local = localStorage.getItem('jiawei_saved_gift_names_v1');
+  let currentList: SavedGiftName[] = INITIAL_SAVED_GIFT_NAMES;
+  if (local) {
+    try {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed)) currentList = parsed;
+    } catch (e) {}
+  }
+
+  // Check if already exists (case-insensitive)
+  const existing = currentList.find(n => 
+    (item.title && n.title.trim().toLowerCase() === item.title.trim().toLowerCase()) ||
+    (item.titleAr && n.titleAr && n.titleAr.trim().toLowerCase() === item.titleAr.trim().toLowerCase())
+  );
+
+  if (existing) {
+    // Update existing
+    const updatedList = currentList.map(n => n.id === existing.id ? { ...n, title: item.title.trim() || n.title, titleAr: item.titleAr?.trim() || n.titleAr } : n);
+    await saveGiftNamesList(updatedList);
+    return { ...existing, title: item.title.trim() || existing.title, titleAr: item.titleAr?.trim() || existing.titleAr };
+  }
+
+  const newEntry: SavedGiftName = {
+    id: `sgn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    title: item.title.trim(),
+    titleAr: item.titleAr?.trim() || '',
+    createdAt: new Date().toISOString()
+  };
+
+  const updatedList = [newEntry, ...currentList];
+  await saveGiftNamesList(updatedList);
+  return newEntry;
+}
+
+export async function deleteSavedGiftName(id: string): Promise<void> {
+  const local = localStorage.getItem('jiawei_saved_gift_names_v1');
+  let currentList: SavedGiftName[] = INITIAL_SAVED_GIFT_NAMES;
+  if (local) {
+    try {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed)) currentList = parsed;
+    } catch (e) {}
+  }
+
+  const updatedList = currentList.filter(n => n.id !== id);
+  await saveGiftNamesList(updatedList);
+}
+
 

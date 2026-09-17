@@ -46,12 +46,17 @@ import {
   RotateCcw,
   Crosshair,
   Pause,
-  Loader2
+  Loader2,
+  BookmarkCheck,
+  Bookmark,
+  Pin,
+  Tag
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
+import { INITIAL_SAVED_GIFT_NAMES } from '../data/initialSavedNames';
 import { PrintDocumentModal } from './PrintDocumentModal';
 import { BannerManager } from './BannerManager';
 import { InternationalPhoneInput } from './InternationalPhoneInput';
@@ -71,7 +76,11 @@ import {
   saveCategory,
   deleteCategory,
   saveSiteSettings,
-  subscribeToSiteSettings
+  subscribeToSiteSettings,
+  subscribeToSavedGiftNames,
+  saveGiftNamesList,
+  addSavedGiftName,
+  deleteSavedGiftName
 } from '../lib/firebaseService';
 
 interface DashboardProps {
@@ -219,9 +228,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [activeStaff?.id]);
 
-  // Form State for Gifts (Default in USD as requested)
-  const [title, setTitle] = useState('');
-  const [titleAr, setTitleAr] = useState('');
+  // Form State for Gifts (Default in USD as requested) - Automatically restores pinned/draft name across sessions
+  const [title, setTitle] = useState(() => localStorage.getItem('jiawei_draft_gift_title') || '');
+  const [titleAr, setTitleAr] = useState(() => localStorage.getItem('jiawei_draft_gift_title_ar') || '');
   const [price, setPrice] = useState<number>(35);
   const [vipPrice, setVipPrice] = useState<number>(20);
   const [exclusivePrice, setExclusivePrice] = useState<number>(180);
@@ -229,6 +238,130 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [posterUrl, setPosterUrl] = useState('');
   const [usePosterImage, setUsePosterImage] = useState<boolean>(true);
   const [posterLoadError, setPosterLoadError] = useState(false);
+
+  // Saved Names Presets Library (Persistent in Firestore & localStorage)
+  const [savedNamesList, setSavedNamesList] = useState<SavedGiftName[]>(() => {
+    const local = localStorage.getItem('jiawei_saved_gift_names_v1');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_SAVED_GIFT_NAMES;
+  });
+  const [pinnedNameId, setPinnedNameId] = useState<string | null>(() => {
+    return localStorage.getItem('jiawei_pinned_name_id') || null;
+  });
+  const [isNameSaveSuccess, setIsNameSaveSuccess] = useState<boolean>(false);
+  const [isAddingNewPresetInline, setIsAddingNewPresetInline] = useState<boolean>(false);
+  const [newPresetTitle, setNewPresetTitle] = useState('');
+  const [newPresetTitleAr, setNewPresetTitleAr] = useState('');
+
+  // Real-time synchronization of saved gift names with Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToSavedGiftNames((names) => {
+      if (names && names.length > 0) {
+        setSavedNamesList(names);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Handle Save & Pin Current Name (حفظ وتثبيت هذا الاسم في القائمة وقاعدة البيانات)
+  const handleSaveAndPinCurrentName = async () => {
+    const trimmedTitle = title.trim();
+    const trimmedTitleAr = titleAr.trim();
+
+    if (!trimmedTitle && !trimmedTitleAr) {
+      alert(lang === 'ar' ? 'يرجى كتابة اسم الهدية أو الاسم بالعربية أولاً لتثبيته وحفظه في القائمة' : '请先输入礼物名称');
+      return;
+    }
+
+    try {
+      const savedEntry = await addSavedGiftName({
+        title: trimmedTitle || trimmedTitleAr,
+        titleAr: trimmedTitleAr || ''
+      });
+      
+      setPinnedNameId(savedEntry.id);
+      localStorage.setItem('jiawei_pinned_name_id', savedEntry.id);
+      localStorage.setItem('jiawei_draft_gift_title', trimmedTitle || trimmedTitleAr);
+      if (trimmedTitleAr) {
+        localStorage.setItem('jiawei_draft_gift_title_ar', trimmedTitleAr);
+      }
+
+      setIsNameSaveSuccess(true);
+      setTimeout(() => setIsNameSaveSuccess(false), 4500);
+    } catch (err) {
+      console.error('Failed to save name preset:', err);
+      setIsNameSaveSuccess(true);
+      setTimeout(() => setIsNameSaveSuccess(false), 4500);
+    }
+  };
+
+  // Handle direct addition to presets list
+  const handleAddNewPresetDirectly = async () => {
+    const trimmedTitle = newPresetTitle.trim();
+    const trimmedTitleAr = newPresetTitleAr.trim();
+
+    if (!trimmedTitle && !trimmedTitleAr) {
+      alert(lang === 'ar' ? 'يرجى كتابة الاسم قبل الحفظ' : '请输入名称');
+      return;
+    }
+
+    try {
+      const savedEntry = await addSavedGiftName({
+        title: trimmedTitle || trimmedTitleAr,
+        titleAr: trimmedTitleAr || ''
+      });
+      
+      // Also apply as current title
+      setTitle(savedEntry.title);
+      setTitleAr(savedEntry.titleAr || '');
+      setPinnedNameId(savedEntry.id);
+      localStorage.setItem('jiawei_pinned_name_id', savedEntry.id);
+      localStorage.setItem('jiawei_draft_gift_title', savedEntry.title);
+      localStorage.setItem('jiawei_draft_gift_title_ar', savedEntry.titleAr || '');
+
+      setNewPresetTitle('');
+      setNewPresetTitleAr('');
+      setIsAddingNewPresetInline(false);
+      setIsNameSaveSuccess(true);
+      setTimeout(() => setIsNameSaveSuccess(false), 4500);
+    } catch (err) {
+      console.error('Failed to add preset:', err);
+    }
+  };
+
+  // Handle selecting a preset from the list
+  const handleSelectNamePreset = (preset: SavedGiftName) => {
+    setTitle(preset.title);
+    setTitleAr(preset.titleAr || '');
+    setPinnedNameId(preset.id);
+    localStorage.setItem('jiawei_pinned_name_id', preset.id);
+    localStorage.setItem('jiawei_draft_gift_title', preset.title);
+    localStorage.setItem('jiawei_draft_gift_title_ar', preset.titleAr || '');
+
+    setIsNameSaveSuccess(true);
+    setTimeout(() => setIsNameSaveSuccess(false), 3000);
+  };
+
+  // Handle deleting a preset
+  const handleDeleteNamePreset = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الاسم من القائمة الدائمة؟' : '确定从永久列表中删除此名称？')) {
+      try {
+        await deleteSavedGiftName(id);
+        if (pinnedNameId === id) {
+          setPinnedNameId(null);
+          localStorage.removeItem('jiawei_pinned_name_id');
+        }
+      } catch (err) {
+        console.error('Failed to delete name preset:', err);
+      }
+    }
+  };
 
   useEffect(() => {
     setPosterLoadError(false);
@@ -541,6 +674,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // Reset Form
     setTitle('');
     setTitleAr('');
+    localStorage.removeItem('jiawei_draft_gift_title');
+    localStorage.removeItem('jiawei_draft_gift_title_ar');
     setVideoUrl('');
     setPosterUrl('');
     setIsTestingVideo(false);
@@ -1286,33 +1421,193 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-              {/* Title & Arabic Title */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    {t.giftNameInput} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="如: 簪花扑月 / 金龙盘霄 / 幻影跑车"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500"
-                  />
+              {/* Title & Arabic Title Section with Persistent Saved Names & Checkmark Pinning */}
+              <div className="space-y-3 p-4 rounded-2xl bg-slate-900/70 border border-slate-800/90 shadow-inner">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/70">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span className="text-xs font-bold text-slate-200">
+                      {lang === 'ar' ? 'اسم الهدية وتثبيته الدائم (الرئيسي وبالعربية):' : '设定并固定礼物名称（主名称与阿拉伯语）：'}
+                    </span>
+                  </div>
+
+                  {/* Status Indicator when pinned/saved */}
+                  {isNameSaveSuccess && (
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-bold bg-emerald-950/80 border border-emerald-500/50 px-3 py-1 rounded-lg">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{lang === 'ar' ? '✓ تم تثبيت وحفظ الاسم في قاعدة البيانات بنجاح' : '✓ 名称已成功保存并固定'}</span>
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    {lang === 'ar' ? 'الاسم بالعربية (اختياري)' : '阿拉伯语名称 (可选)'}
-                  </label>
-                  <input
-                    type="text"
-                    value={titleAr}
-                    onChange={(e) => setTitleAr(e.target.value)}
-                    placeholder="مثال: زهرة القمر الطائر / التنين الذهبي"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {t.giftNameInput} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={title}
+                      onChange={(e) => {
+                        setTitle(e.target.value);
+                        localStorage.setItem('jiawei_draft_gift_title', e.target.value);
+                      }}
+                      placeholder="如: 簪花扑月 / 金龙盘霄 / 幻影跑车"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {lang === 'ar' ? 'الاسم بالعربية (اختياري)' : '阿拉伯语名称 (可选)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={titleAr}
+                      onChange={(e) => {
+                        setTitleAr(e.target.value);
+                        localStorage.setItem('jiawei_draft_gift_title_ar', e.target.value);
+                      }}
+                      placeholder="مثال: زهرة القمر الطائر / التنين الذهبي"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Save / Pin with Checkmark Button Row */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveAndPinCurrentName}
+                      disabled={!title.trim() && !titleAr.trim()}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                        (title.trim() || titleAr.trim())
+                          ? 'bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white border-emerald-400/50 shadow-lg shadow-emerald-950/40 active:scale-95'
+                          : 'bg-slate-800/80 text-slate-500 border-slate-700/60 cursor-not-allowed'
+                      }`}
+                      title={lang === 'ar' ? 'تثبيت وحفظ هذا الاسم في القائمة وقاعدة البيانات' : '保存并固定此名称到永久列表'}
+                    >
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>{lang === 'ar' ? 'صح (✓) حفظ وتثبيت هذا الاسم في القائمة الدائمة' : '确认 (✓) 保存并固定此名称'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewPresetInline(!isAddingNewPresetInline)}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-cyan-300 border border-slate-700/70 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{lang === 'ar' ? 'إضافة اسم جديد للقائمة' : '添加新名称到列表'}</span>
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>
+                      {lang === 'ar'
+                        ? 'محفوظ في قاعدة البيانات: يبقى الاسم ثابتاً حتى لو خرجت ودخلت'
+                        : '名称已自动持久化存储在云端数据库与本地缓存中'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inline Add New Preset Form */}
+                {isAddingNewPresetInline && (
+                  <div className="p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/40 space-y-2.5 mt-2 shadow-xl">
+                    <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{lang === 'ar' ? 'إضافة اسم هدية جديد إلى القائمة الدائمة وحفظه في السيرفر:' : '直接添加新礼物名称到永久列表并保存到云端：'}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <input
+                        type="text"
+                        value={newPresetTitle}
+                        onChange={(e) => setNewPresetTitle(e.target.value)}
+                        placeholder="الاسم الأصلي / الصيني أو الإنجليزي (مثال: Cyber Phoenix)"
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-400"
+                      />
+                      <input
+                        type="text"
+                        value={newPresetTitleAr}
+                        onChange={(e) => setNewPresetTitleAr(e.target.value)}
+                        placeholder="الاسم بالعربية (مثال: العنقاء الإلكترونية الخارقة)"
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewPresetInline(false)}
+                        className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                      >
+                        {lang === 'ar' ? 'إلغاء' : '取消'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddNewPresetDirectly}
+                        disabled={!newPresetTitle.trim() && !newPresetTitleAr.trim()}
+                        className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{lang === 'ar' ? 'حفظ وتثبيت في القائمة' : '保存到列表'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Persistent Saved Names Presets Library (Interactive Chips) */}
+                <div className="pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <BookmarkCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>{lang === 'ar' ? 'قائمة الأسماء الدائمة المحفوظة (اضغط على أي اسم لتحديده وتثبيته):' : '已保存的永久名称列表（点击即可选定并填充）：'}</span>
+                      <span className="text-[10px] bg-slate-800 text-cyan-300 px-2 py-0.5 rounded-full font-mono font-bold">
+                        {savedNamesList.length}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 max-h-40 overflow-y-auto pr-1">
+                    {savedNamesList.map((preset) => {
+                      const isSelected = 
+                        (preset.id && preset.id === pinnedNameId) || 
+                        (title && preset.title.trim().toLowerCase() === title.trim().toLowerCase()) ||
+                        (titleAr && preset.titleAr && preset.titleAr.trim() === titleAr.trim());
+
+                      return (
+                        <div
+                          key={preset.id}
+                          onClick={() => handleSelectNamePreset(preset)}
+                          className={`group relative px-3 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300 font-bold shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500/50'
+                              : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-700/80 text-slate-300 hover:text-white'
+                          }`}
+                          title={lang === 'ar' ? 'اضغط لتطبيق وتثبيت هذا الاسم' : '点击应用并锁定此名称'}
+                        >
+                          {isSelected ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          ) : (
+                            <Tag className="w-3 h-3 text-slate-400 group-hover:text-cyan-400 shrink-0" />
+                          )}
+
+                          <span>{preset.titleAr ? `${preset.titleAr} (${preset.title})` : preset.title}</span>
+
+                          {/* Delete button from preset list */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteNamePreset(e, preset.id)}
+                            className="opacity-40 hover:opacity-100 hover:text-red-400 p-0.5 rounded transition-all shrink-0 ml-1"
+                            title={lang === 'ar' ? 'حذف من القائمة' : '删除'}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

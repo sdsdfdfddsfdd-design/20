@@ -76,6 +76,16 @@
         { "name": "isActive", "type": "boolean" }
       ],
       "access": "read:all, write:authenticated"
+    },
+    {
+      "name": "settings",
+      "description": "Platform settings and saved gift names presets list",
+      "fields": [
+        { "name": "siteName", "type": "string" },
+        { "name": "names", "type": "array" },
+        { "name": "updatedAt", "type": "string" }
+      ],
+      "access": "read:all, write:authenticated"
     }
   ]
 }

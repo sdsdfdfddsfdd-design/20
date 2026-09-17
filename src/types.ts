@@ -159,3 +159,10 @@ export interface AuthUser {
   lastLogin?: string;
 }
 
+export interface SavedGiftName {
+  id: string;
+  title: string;       // Primary title (Chinese / English / Custom)
+  titleAr?: string;     // Arabic title
+  createdAt?: string;
+}
+
