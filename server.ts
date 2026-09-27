@@ -131,10 +131,10 @@ app.get('/uploads/:filename', (req: Request, res: Response) => {
   }
 });
 
-// Proxy Media Endpoint (for external CDN videos that block CORS)
+// Proxy Media Endpoint (for external CDN videos like top4top.io that block CORS or need page scraping)
 app.get('/api/proxy-media', async (req: Request, res: Response) => {
   try {
-    const targetUrl = req.query.url as string;
+    let targetUrl = req.query.url as string;
     if (!targetUrl) {
       return res.status(400).json({ error: 'Missing url parameter' });
     }
@@ -148,6 +148,30 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       upstreamHeaders['Range'] = req.headers.range;
     }
 
+    // Top4Top link handling (Top4Top page scraping & hotlink headers)
+    if (targetUrl.includes('top4top.io')) {
+      upstreamHeaders['Referer'] = 'https://top4top.io/';
+      upstreamHeaders['Origin'] = 'https://top4top.io';
+
+      const isDirectFile = /\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)($|\?)/i.test(targetUrl);
+      // If user pasted a Top4Top download page link (e.g. top4top.io/downloadf-xxx.html or top4top.io/index.php), extract direct file URL
+      if (!isDirectFile || targetUrl.includes('/downloadf-') || targetUrl.includes('/index.php')) {
+        try {
+          const pageRes = await fetch(targetUrl, { headers: upstreamHeaders });
+          if (pageRes.ok) {
+            const html = await pageRes.text();
+            // Match direct media URLs on top4top servers (a.top4top.io, b.top4top.io, etc.)
+            const matches = html.match(/https?:\/\/[a-z0-9]+\.top4top\.io\/[^\s"'<>]+?\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)/gi);
+            if (matches && matches.length > 0) {
+              targetUrl = matches[0];
+            }
+          }
+        } catch (scrapeErr) {
+          console.warn('Could not scrape Top4Top HTML page:', scrapeErr);
+        }
+      }
+    }
+
     const upstream = await fetch(targetUrl, {
       headers: upstreamHeaders,
     });
@@ -156,8 +180,16 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       return res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
     }
 
-    const contentType = upstream.headers.get('content-type') || (targetUrl.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream');
-    
+    let contentType = upstream.headers.get('content-type') || '';
+    if (!contentType || contentType.includes('text/html') || contentType.includes('text/plain')) {
+      if (/\.mp4($|\?)/i.test(targetUrl)) contentType = 'video/mp4';
+      else if (/\.(svga|svga2)($|\?)/i.test(targetUrl)) contentType = 'application/octet-stream';
+      else if (/\.webm($|\?)/i.test(targetUrl)) contentType = 'video/webm';
+      else if (/\.(jpg|jpeg)($|\?)/i.test(targetUrl)) contentType = 'image/jpeg';
+      else if (/\.png($|\?)/i.test(targetUrl)) contentType = 'image/png';
+      else contentType = 'video/mp4';
+    }
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Content-Type', contentType);

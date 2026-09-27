@@ -137,6 +137,33 @@
         "lastUsed": { "type": "string" }
       },
       "required": ["id", "hash", "type", "originalSize", "optimizedSize"]
+    },
+    "ExternalVideo": {
+      "title": "ExternalVideo",
+      "description": "External cloud video upload record (Top4toP / Cloud Storage)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "operationId": { "type": "string", "maxLength": 128 },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "fileSize": { "type": "number" },
+        "fileType": { "type": "string", "maxLength": 100 },
+        "externalVideoUrl": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "uploadStatus": { "type": "string", "enum": ["PENDING", "UPLOADING", "PROCESSING", "COMPLETED", "FAILED"] },
+        "uploadedAt": { "type": "string" },
+        "lastAttemptAt": { "type": "string" },
+        "errorMessage": { "type": "string" },
+        "sha256Hash": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "enum": ["top4top", "local", "cloud"] },
+        "giftId": { "type": "string", "maxLength": 128 },
+        "giftTitle": { "type": "string", "maxLength": 200 },
+        "verified": { "type": "boolean" },
+        "duration": { "type": "number" },
+        "resolution": { "type": "string", "maxLength": 50 },
+        "posterUrl": { "type": "string" }
+      },
+      "required": ["id", "fileName", "uploadStatus", "sha256Hash"]
     }
   },
   "firestore": {
@@ -171,6 +198,10 @@
     "/assets/{assetId}": {
       "schema": "MediaAsset",
       "description": "Optimized SVGA media asset library"
+    },
+    "/externalVideos/{videoId}": {
+      "schema": "ExternalVideo",
+      "description": "External video cloud storage and Top4toP uploads registry"
     }
   }
 }

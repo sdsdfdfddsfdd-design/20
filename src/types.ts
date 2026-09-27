@@ -37,6 +37,10 @@ export interface GiftItem {
   deliveryUrl?: string; // Instant delivery link after purchase
   cloudDiskCode?: string; // 网盘提取码
   licenseCode?: string;
+  externalVideoUrl?: string; // Direct Top4toP or external CDN streaming link
+  downloadUrl?: string; // Direct download link
+  externalVideoId?: string; // ID referencing ExternalVideo record
+  uploadProvider?: 'top4top' | 'local' | 'cloud';
   downloadsCount: number;
   favoritesCount: number;
   isNew?: boolean;
@@ -234,4 +238,30 @@ export interface OptimizationTask {
   isDeduplicated?: boolean;
   startedAt: number;
 }
+
+export type UploadStatus = 'PENDING' | 'UPLOADING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface ExternalVideoRecord {
+  id: string;
+  operationId: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  externalVideoUrl: string;
+  downloadUrl: string;
+  uploadStatus: UploadStatus;
+  uploadedAt: string;
+  lastAttemptAt?: string;
+  errorMessage?: string;
+  sha256Hash: string;
+  provider: 'top4top' | 'local' | 'cloud';
+  giftId?: string;
+  giftTitle?: string;
+  verified: boolean;
+  duration?: number;
+  resolution?: string;
+  posterUrl?: string;
+  retryCount?: number;
+}
+
 

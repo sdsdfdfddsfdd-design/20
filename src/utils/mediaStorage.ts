@@ -118,13 +118,11 @@ export async function uploadMediaToServer(
  */
 export function resolveMediaUrl(url?: string, useProxy = false): string {
   if (!url) return '';
-  if (url.startsWith('/uploads/')) {
+  if (url.startsWith('/uploads/') || url.startsWith('blob:') || url.startsWith('data:')) {
     return url;
   }
-  if (url.startsWith('blob:') || url.startsWith('data:')) {
-    return url;
-  }
-  if (useProxy && (url.startsWith('http://') || url.startsWith('https://'))) {
+  // Automatically proxy top4top.io URLs to extract direct file and bypass hotlink protection/CORS
+  if (url.includes('top4top.io') || useProxy) {
     return `/api/proxy-media?url=${encodeURIComponent(url)}`;
   }
   return url;

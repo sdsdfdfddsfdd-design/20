@@ -90,5 +90,15 @@ service cloud.firestore {
         incoming().optimizedSize is number;
       allow delete: if isAuthenticated() && isValidId(assetId);
     }
+
+    // 9. External Videos Collection: Top4toP and cloud storage video uploads registry
+    match /externalVideos/{videoId} {
+      allow read: if isValidId(videoId);
+      allow create, update: if isAuthenticated() && isValidId(videoId) &&
+        incoming().fileName is string &&
+        incoming().uploadStatus is string &&
+        incoming().sha256Hash is string;
+      allow delete: if isAuthenticated() && isValidId(videoId);
+    }
   }
 }
