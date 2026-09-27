@@ -130,6 +130,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           <video
             ref={videoRef}
             src={videoSrc || undefined}
+            autoPlay={!hasPoster}
             onLoadedMetadata={(e) => {
               if (startTime > 0) {
                 try {
@@ -137,11 +138,16 @@ export const GiftCard: React.FC<GiftCardProps> = ({
                 } catch (err) {}
               }
             }}
+            onCanPlay={() => {
+              if (!hasPoster || isHovered) {
+                videoRef.current?.play().catch(() => {});
+              }
+            }}
             onError={handleVideoError}
             loop
             muted
             playsInline
-            preload="metadata"
+            preload={!hasPoster ? 'auto' : 'metadata'}
             className={`w-full h-full object-cover transition-opacity duration-300 ${
               hasPoster
                 ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'

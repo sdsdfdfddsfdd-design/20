@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import SVGA from 'svgaplayerweb';
 import JSZip from 'jszip';
 import { Sparkles, AlertCircle, RefreshCw, Layers } from 'lucide-react';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
 
 interface SvgaPlayerProps {
   src: string | ArrayBuffer | Blob | File;
@@ -83,33 +84,50 @@ export const SvgaPlayer: React.FC<SvgaPlayerProps> = ({
         if (typeof src === 'string') {
           if (src.startsWith('data:')) {
             arrayBuffer = dataUrlToArrayBuffer(src);
-          } else if (src.startsWith('blob:') || src.startsWith('http')) {
+          } else {
+            const resolvedUrl = resolveMediaUrl(src);
             try {
-              const response = await fetch(src, { mode: 'cors' });
+              const response = await fetch(resolvedUrl);
               if (!response.ok) throw new Error(`HTTP error ${response.status}`);
               arrayBuffer = await response.arrayBuffer();
             } catch (fetchErr) {
-              console.warn('Direct fetch was blocked or failed, switching to visual vector animation engine:', fetchErr);
-              // Gracefully handle CORS / network restriction by rendering visual effect directly
-              if (isMounted) {
-                const meta = {
-                  width: 750,
-                  height: 1334,
-                  fps: 30,
-                  frames: 60,
-                  duration: 2.0,
-                  imagesCount: 0
-                };
-                setSvgaMetadata(meta);
-                onLoaded?.(meta);
-                setUsingFallbackRenderer(true);
-                setIsLoading(false);
-                startFallbackAnimation(meta, null, new Map());
+              console.warn('Direct fetch failed, checking IndexedDB cache and proxy:', fetchErr);
+              // Try IndexedDB cached copy
+              try {
+                const cachedBlob = await getMediaFromIndexedDb(src) || await getMediaFromIndexedDb(resolvedUrl);
+                if (cachedBlob) {
+                  arrayBuffer = await cachedBlob.arrayBuffer();
+                } else if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+                  const proxyUrl = getProxyMediaUrl(resolvedUrl);
+                  const pRes = await fetch(proxyUrl);
+                  if (pRes.ok) {
+                    arrayBuffer = await pRes.arrayBuffer();
+                  }
+                }
+              } catch (cacheErr) {
+                console.warn('Cache lookup failed:', cacheErr);
               }
-              return;
+
+              if (!arrayBuffer) {
+                // Gracefully handle CORS / network restriction by rendering visual vector effect directly
+                if (isMounted) {
+                  const meta = {
+                    width: 750,
+                    height: 1334,
+                    fps: 30,
+                    frames: 60,
+                    duration: 2.0,
+                    imagesCount: 0
+                  };
+                  setSvgaMetadata(meta);
+                  onLoaded?.(meta);
+                  setUsingFallbackRenderer(true);
+                  setIsLoading(false);
+                  startFallbackAnimation(meta, null, new Map());
+                }
+                return;
+              }
             }
-          } else {
-            throw new Error('Invalid URL source format');
           }
         } else if (src instanceof File || src instanceof Blob) {
           arrayBuffer = await src.arrayBuffer();

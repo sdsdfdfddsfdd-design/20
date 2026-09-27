@@ -62,7 +62,7 @@ import { BannerManager } from './BannerManager';
 import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { GiftMediaOptimizer } from './GiftMediaOptimizer';
 import { SvgaPlayer } from './SvgaPlayer';
-import { uploadMediaToServer, saveMediaToIndexedDb, resolveMediaUrl } from '../utils/mediaStorage';
+import { uploadMediaToServer, saveMediaToIndexedDb, resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
 import { extractVideoMetadata, calculateSHA256 } from '../utils/svgaOptimizer';
 import { 
   addGift, 
@@ -2212,7 +2212,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   videoUrl.toLowerCase().endsWith('.svga') || videoUrl.toLowerCase().endsWith('.svga2') || videoUrl.includes('data:application/octet-stream') || formatsText.toUpperCase().includes('SVGA') ? (
                     <SvgaPlayer
                       key={videoUrl}
-                      src={videoUrl}
+                      src={resolveMediaUrl(videoUrl)}
                       autoPlay={isVideoPlaying}
                       loop={true}
                       className="w-full h-full object-contain"
@@ -2225,13 +2225,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <video
                         key={videoUrl}
                         ref={previewVideoRef}
-                        src={videoUrl}
+                        src={resolveMediaUrl(videoUrl)}
                         autoPlay
                         loop
                         muted
                         playsInline
                         onLoadedData={() => setVideoTestError(false)}
-                        onCanPlay={() => setVideoTestError(false)}
+                        onCanPlay={() => {
+                          setVideoTestError(false);
+                          if (isVideoPlaying && previewVideoRef.current) {
+                            previewVideoRef.current.play().catch(() => {});
+                          }
+                        }}
                         onTimeUpdate={() => {
                           if (previewVideoRef.current) {
                             setVideoScrubTime(previewVideoRef.current.currentTime);
@@ -2242,7 +2247,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             setVideoDuration(previewVideoRef.current.duration || 14);
                           }
                         }}
-                        onError={() => setVideoTestError(true)}
+                        onError={async () => {
+                          try {
+                            const cached = await getMediaFromIndexedDb(videoUrl);
+                            if (cached && previewVideoRef.current) {
+                              previewVideoRef.current.src = URL.createObjectURL(cached);
+                              previewVideoRef.current.play().catch(() => {});
+                              setVideoTestError(false);
+                              return;
+                            }
+                            if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+                              const pUrl = getProxyMediaUrl(videoUrl);
+                              if (previewVideoRef.current && previewVideoRef.current.src !== pUrl) {
+                                previewVideoRef.current.src = pUrl;
+                                previewVideoRef.current.play().catch(() => {});
+                                setVideoTestError(false);
+                                return;
+                              }
+                            }
+                          } catch (e) {}
+                          setVideoTestError(true);
+                        }}
                         className="w-full h-full object-contain cursor-pointer"
                         onClick={() => {
                           if (!previewVideoRef.current) return;
