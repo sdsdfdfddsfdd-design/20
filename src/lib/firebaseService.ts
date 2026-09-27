@@ -16,6 +16,7 @@ export const collections = {
   banners: collection(db, 'banners'),
   categories: collection(db, 'categories'),
   settings: collection(db, 'settings'),
+  assets: collection(db, 'assets'),
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -590,5 +591,125 @@ export async function deleteSavedGiftName(id: string): Promise<void> {
   const updatedList = currentList.filter(n => n.id !== id);
   await saveGiftNamesList(updatedList);
 }
+
+// ==========================================
+// ASSET LIBRARY & MEDIA OPTIMIZER FIRESTORE SERVICES
+// ==========================================
+
+export async function saveAssetToDb(asset: any): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const docRef = doc(db, 'assets', asset.id);
+    const sanitized = sanitizeData(asset);
+    await setDoc(docRef, sanitized, { merge: true });
+  } catch (error) {
+    console.error('Error saving asset to Firestore:', handleFirestoreError(error));
+    // Local fallback
+    try {
+      const localAssets = JSON.parse(localStorage.getItem('jiawei_assets_v1') || '[]');
+      const idx = localAssets.findIndex((a: any) => a.id === asset.id || a.hash === asset.hash);
+      if (idx >= 0) localAssets[idx] = asset;
+      else localAssets.unshift(asset);
+      localStorage.setItem('jiawei_assets_v1', JSON.stringify(localAssets));
+    } catch (e) {}
+  }
+}
+
+export async function deleteAssetFromDb(assetId: string): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    await deleteDoc(doc(db, 'assets', assetId));
+  } catch (error) {
+    console.error('Error deleting asset from Firestore:', handleFirestoreError(error));
+  }
+  try {
+    const localAssets = JSON.parse(localStorage.getItem('jiawei_assets_v1') || '[]');
+    const filtered = localAssets.filter((a: any) => a.id !== assetId);
+    localStorage.setItem('jiawei_assets_v1', JSON.stringify(filtered));
+  } catch (e) {}
+}
+
+export function subscribeToAssets(callback: (assets: any[]) => void): () => void {
+  try {
+    return onSnapshot(collections.assets, (snapshot) => {
+      const liveAssets: any[] = [];
+      snapshot.forEach((d) => {
+        liveAssets.push(d.data());
+      });
+      if (liveAssets.length > 0) {
+        callback(liveAssets);
+        localStorage.setItem('jiawei_assets_v1', JSON.stringify(liveAssets));
+      } else {
+        const local = localStorage.getItem('jiawei_assets_v1');
+        if (local) {
+          try {
+            callback(JSON.parse(local));
+          } catch (e) {}
+        }
+      }
+    }, (error) => {
+      console.warn('Assets snapshot error:', error);
+      const local = localStorage.getItem('jiawei_assets_v1');
+      if (local) {
+        try {
+          callback(JSON.parse(local));
+        } catch (e) {}
+      }
+    });
+  } catch (e) {
+    const local = localStorage.getItem('jiawei_assets_v1');
+    if (local) {
+      try {
+        callback(JSON.parse(local));
+      } catch (err) {}
+    }
+    return () => {};
+  }
+}
+
+export async function saveOptimizerSettings(settings: any): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const docRef = doc(db, 'settings', 'optimizer_config');
+    await setDoc(docRef, { ...settings, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (error) {
+    console.warn('Error saving optimizer settings:', error);
+  }
+  localStorage.setItem('jiawei_optimizer_settings_v1', JSON.stringify(settings));
+}
+
+export function subscribeToOptimizerSettings(callback: (settings: any) => void): () => void {
+  try {
+    const docRef = doc(db, 'settings', 'optimizer_config');
+    return onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        callback(snap.data());
+      } else {
+        const local = localStorage.getItem('jiawei_optimizer_settings_v1');
+        if (local) {
+          try {
+            callback(JSON.parse(local));
+          } catch (e) {}
+        }
+      }
+    }, (err) => {
+      const local = localStorage.getItem('jiawei_optimizer_settings_v1');
+      if (local) {
+        try {
+          callback(JSON.parse(local));
+        } catch (e) {}
+      }
+    });
+  } catch (e) {
+    const local = localStorage.getItem('jiawei_optimizer_settings_v1');
+    if (local) {
+      try {
+        callback(JSON.parse(local));
+      } catch (err) {}
+    }
+    return () => {};
+  }
+}
+
 
 

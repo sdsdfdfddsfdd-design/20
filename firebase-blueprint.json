@@ -86,6 +86,26 @@
         { "name": "updatedAt", "type": "string" }
       ],
       "access": "read:all, write:authenticated"
+    },
+    {
+      "name": "assets",
+      "description": "Optimized SVGA, animations, video and media assets with SHA-256 deduplication and metrics",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "hash", "type": "string" },
+        { "name": "type", "type": "string" },
+        { "name": "size", "type": "number" },
+        { "name": "originalSize", "type": "number" },
+        { "name": "optimizedSize", "type": "number" },
+        { "name": "savedBytes", "type": "number" },
+        { "name": "savingsPercent", "type": "number" },
+        { "name": "dataUrl", "type": "string" },
+        { "name": "usageCount", "type": "number" },
+        { "name": "usedInGiftIds", "type": "array" },
+        { "name": "createdAt", "type": "string" },
+        { "name": "lastUsed", "type": "string" }
+      ],
+      "access": "read:all, write:authenticated"
     }
   ]
 }

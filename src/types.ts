@@ -166,3 +166,71 @@ export interface SavedGiftName {
   createdAt?: string;
 }
 
+export type AssetMediaType = 'svga' | 'svga2' | 'mp4' | 'webp' | 'png' | 'jpeg' | 'gif' | 'audio' | 'shared';
+
+export interface SvgaStructureInfo {
+  version: '1.0' | '2.0';
+  fps: number;
+  frames: number;
+  duration: number; // in seconds
+  width: number;
+  height: number;
+  layersCount: number;
+  spritesCount: number;
+  uniqueSpritesCount: number;
+  audioTracksCount: number;
+  hasMasks: boolean;
+  hasTransforms: boolean;
+  hasAlpha: boolean;
+  layersList?: { id: string; name: string; type: string; opacity: number }[];
+}
+
+export interface MediaAssetItem {
+  id: string;
+  name: string;
+  hash: string; // SHA-256
+  type: AssetMediaType;
+  mimeType: string;
+  originalSize: number; // bytes
+  optimizedSize: number; // bytes
+  savedBytes: number;
+  savingsPercent: number;
+  resolution?: string; // '1080x1920'
+  duration?: number;
+  fps?: number;
+  svgaInfo?: SvgaStructureInfo;
+  dataUrl: string; // Base64 or Blob storage URL
+  posterUrl?: string; // Cover thumbnail
+  storagePath?: string;
+  usageCount: number;
+  usedInGiftIds: string[];
+  keepOriginalBackup: boolean;
+  createdAt: string;
+  lastUsed: string;
+}
+
+export interface OptimizationOptions {
+  keepOriginalBackup: boolean;
+  compressionMode: 'lossless' | 'balanced' | 'max';
+  deduplicateSprites: boolean;
+  removeUnusedData: boolean;
+  targetResolution?: 'original' | '1080p' | '720p' | '540p';
+  preserveTransparency: boolean;
+}
+
+export interface OptimizationTask {
+  id: string;
+  file: File;
+  name: string;
+  originalSize: number;
+  type: string;
+  progress: number; // 0 - 100
+  speedMBs: number;
+  status: 'pending' | 'uploading' | 'analyzing' | 'optimizing' | 'validating' | 'completed' | 'error' | 'deduplicated';
+  statusText: string;
+  resultAsset?: MediaAssetItem;
+  error?: string;
+  isDeduplicated?: boolean;
+  startedAt: number;
+}
+

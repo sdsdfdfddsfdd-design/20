@@ -52,7 +52,7 @@ import {
   Pin,
   Tag
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName, MediaAssetItem } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
@@ -60,6 +60,7 @@ import { INITIAL_SAVED_GIFT_NAMES } from '../data/initialSavedNames';
 import { PrintDocumentModal } from './PrintDocumentModal';
 import { BannerManager } from './BannerManager';
 import { InternationalPhoneInput } from './InternationalPhoneInput';
+import { GiftMediaOptimizer } from './GiftMediaOptimizer';
 import { 
   addGift, 
   updateGift, 
@@ -122,7 +123,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const t = translations[lang];
 
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide' | 'settings' | 'categories'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide' | 'settings' | 'categories' | 'optimizer'>('create');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const bannersList = banners || INITIAL_BANNERS;
@@ -361,6 +362,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
         console.error('Failed to delete name preset:', err);
       }
     }
+  };
+
+  // Handle creating a new gift directly from an Optimized Media Asset
+  const handleCreateGiftFromAsset = (asset: MediaAssetItem) => {
+    setActiveTab('create');
+    setTitle(asset.name);
+    if (asset.dataUrl) {
+      setVideoUrl(asset.dataUrl);
+    }
+    if (asset.posterUrl) {
+      setPosterUrl(asset.posterUrl);
+      setUsePosterImage(true);
+    }
+    if (asset.type === 'svga' || asset.type === 'svga2') {
+      setFormatsText('SVGA 2.0动效 (Optimized), MP4带声音, VAP透明通道');
+      setTheme('SVGA 2.0');
+    } else {
+      setFormatsText('MP4带声音, VAP透明通道, WEBP');
+    }
+    setSuccessMessage(
+      lang === 'ar'
+        ? `تم تحميل بيانات الأصل المحسّن (${asset.name}) إلى نموذج إنشاء الهدية بنجاح!`
+        : `Successfully loaded optimized asset (${asset.name}) into create form!`
+    );
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   useEffect(() => {
@@ -1157,6 +1183,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
             >
               <Layers className="w-4 h-4" />
               <span>{t.manageGifts} ({gifts.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('optimizer')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap font-bold cursor-pointer ${
+                activeTab === 'optimizer'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>Gift Media Optimizer</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-400/20 text-amber-200 border border-amber-400/30 font-mono">
+                SVGA 2.0
+              </span>
             </button>
           </>
         )}
@@ -3804,6 +3845,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </form>
         </div>
+      )}
+
+      {/* TAB 8: GIFT MEDIA OPTIMIZER & ASSET LIBRARY */}
+      {activeTab === 'optimizer' && (
+        <GiftMediaOptimizer
+          lang={lang}
+          onOpenCreateGiftWithAsset={handleCreateGiftFromAsset}
+          existingGifts={gifts}
+        />
       )}
     </div>
   );

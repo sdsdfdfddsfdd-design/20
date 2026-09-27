@@ -46,5 +46,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthenticated();
     }
+
+    // Assets Collection: Readable by all, writable by authenticated users
+    match /assets/{assetId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
   }
 }
