@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Play, Eye, ShoppingCart, CheckCircle2, Sparkles, Flame, MessageCircle, Video } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
 
 interface GiftCardProps {
   gift: GiftItem;
@@ -21,6 +22,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
 }) => {
   const t = translations[lang];
   const [isHovered, setIsHovered] = useState(false);
+  const [videoSrc, setVideoSrc] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasPoster = Boolean(gift.posterUrl && gift.posterUrl.trim());
@@ -36,11 +38,19 @@ export const GiftCard: React.FC<GiftCardProps> = ({
 
   const startTime = typeof gift.previewStartTime === 'number' ? gift.previewStartTime : 0;
 
+  useEffect(() => {
+    if (gift.videoUrl) {
+      setVideoSrc(resolveMediaUrl(gift.videoUrl));
+    }
+  }, [gift.videoUrl]);
+
   const handleMouseEnter = () => {
     setIsHovered(true);
     if (videoRef.current) {
       if (startTime > 0 && Math.abs(videoRef.current.currentTime - startTime) > 0.5 && !isHovered) {
-        videoRef.current.currentTime = startTime;
+        try {
+          videoRef.current.currentTime = startTime;
+        } catch (e) {}
       }
       videoRef.current.play().catch(() => {
         // Autoplay may be restricted if user hasn't interacted
@@ -53,9 +63,24 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     if (videoRef.current) {
       videoRef.current.pause();
       if (startTime > 0) {
-        videoRef.current.currentTime = startTime;
+        try {
+          videoRef.current.currentTime = startTime;
+        } catch (e) {}
       }
     }
+  };
+
+  const handleVideoError = async () => {
+    try {
+      const cached = await getMediaFromIndexedDb(gift.id) || await getMediaFromIndexedDb(gift.videoUrl);
+      if (cached) {
+        setVideoSrc(URL.createObjectURL(cached));
+        return;
+      }
+      if (gift.videoUrl && (gift.videoUrl.startsWith('http://') || gift.videoUrl.startsWith('https://')) && !videoSrc.includes('/api/proxy-media')) {
+        setVideoSrc(getProxyMediaUrl(gift.videoUrl));
+      }
+    } catch (e) {}
   };
 
   const displayTitle = lang === 'ar' && gift.titleAr ? gift.titleAr : lang === 'en' && gift.titleEn ? gift.titleEn : gift.title;
@@ -92,7 +117,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           >
             {isHovered || !hasPoster ? (
               <SvgaPlayer
-                src={gift.videoUrl}
+                src={videoSrc || gift.videoUrl}
                 autoPlay={true}
                 loop={true}
                 isMuted={true}
@@ -104,12 +129,15 @@ export const GiftCard: React.FC<GiftCardProps> = ({
         ) : (
           <video
             ref={videoRef}
-            src={gift.videoUrl ? `${gift.videoUrl}#t=${startTime > 0 ? startTime : 0.001}` : undefined}
+            src={videoSrc || undefined}
             onLoadedMetadata={(e) => {
               if (startTime > 0) {
-                e.currentTarget.currentTime = startTime;
+                try {
+                  e.currentTarget.currentTime = startTime;
+                } catch (err) {}
               }
             }}
+            onError={handleVideoError}
             loop
             muted
             playsInline

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, 
   Pause, 
@@ -27,6 +27,7 @@ import {
 import { MediaAssetItem, GiftItem } from '../types';
 import { formatBytes, formatDuration } from '../utils/svgaOptimizer';
 import { SvgaPlayer } from './SvgaPlayer';
+import { resolveMediaUrl, getMediaFromIndexedDb } from '../utils/mediaStorage';
 
 interface SvgaPlayerModalProps {
   asset: MediaAssetItem | null;
@@ -56,8 +57,9 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const isSvga = asset.type === 'svga' || asset.type === 'svga2';
-  const isVideo = asset.type === 'mp4';
+  const isVideo = asset.type === 'mp4' || Boolean(asset.mimeType && asset.mimeType.includes('video'));
   const isImage = asset.type === 'webp' || asset.type === 'jpeg' || asset.type === 'png' || asset.type === 'gif';
+  const mediaSrc = resolveMediaUrl(asset.dataUrl);
 
   const totalFrames = asset.svgaInfo?.frames || Math.round((asset.duration || 4) * (asset.fps || 30)) || 60;
   const fps = asset.fps || 30;
@@ -148,12 +150,26 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
                 {isVideo ? (
                   <video
                     ref={videoRef}
-                    src={asset.dataUrl}
+                    key={mediaSrc}
+                    src={mediaSrc}
                     poster={asset.posterUrl}
                     loop={isLoop}
                     autoPlay={isPlaying}
                     muted={isMuted}
                     playsInline
+                    preload="auto"
+                    onTimeUpdate={() => {
+                      if (videoRef.current) {
+                        const cur = videoRef.current.currentTime;
+                        const tot = videoRef.current.duration || duration || 1;
+                        setCurrentFrame(Math.round((cur / tot) * totalFrames));
+                      }
+                    }}
+                    onCanPlay={() => {
+                      if (isPlaying && videoRef.current) {
+                        videoRef.current.play().catch(() => {});
+                      }
+                    }}
                     className="max-h-[380px] w-auto object-contain rounded-xl shadow-2xl drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)]"
                   />
                 ) : isImage ? (

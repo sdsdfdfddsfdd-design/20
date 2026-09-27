@@ -62,6 +62,8 @@ import { BannerManager } from './BannerManager';
 import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { GiftMediaOptimizer } from './GiftMediaOptimizer';
 import { SvgaPlayer } from './SvgaPlayer';
+import { uploadMediaToServer, saveMediaToIndexedDb, resolveMediaUrl } from '../utils/mediaStorage';
+import { extractVideoMetadata, calculateSHA256 } from '../utils/svgaOptimizer';
 import { 
   addGift, 
   updateGift, 
@@ -421,6 +423,71 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [videoScrubTime, setVideoScrubTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(14);
   const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadStatus, setVideoUploadStatus] = useState<string>('');
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+
+  const handleVideoFileUpload = async (file: File) => {
+    if (!file) return;
+    setIsUploadingVideo(true);
+    setVideoUploadStatus(lang === 'ar' ? 'جارِ معالجة ورفع الفيديو إلى السيرفر وحفظه...' : '正在上传并永久保存视频...');
+    setVideoTestError(false);
+
+    try {
+      // 1. Extract metadata and thumbnail snapshot
+      const meta = await extractVideoMetadata(file);
+      if (meta.duration) {
+        setVideoDuration(meta.duration);
+      }
+      if (meta.posterUrl && !posterUrl) {
+        setPosterUrl(meta.posterUrl);
+      }
+
+      // 2. Upload file permanently to server /api/upload
+      const safeName = file.name.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      const uploadRes = await uploadMediaToServer(file, safeName);
+      
+      // 3. Save to IndexedDB for instant local fallback
+      const hash = await calculateSHA256(file);
+      await saveMediaToIndexedDb(hash, file, safeName);
+      await saveMediaToIndexedDb(uploadRes.url, file, safeName);
+
+      setVideoUrl(uploadRes.url);
+      setIsTestingVideo(true);
+      setVideoUploadStatus(lang === 'ar' ? 'تم رفع وحفظ الفيديو الدائم بنجاح!' : '视频上传保存成功！');
+      setTimeout(() => setVideoUploadStatus(''), 4000);
+    } catch (err: any) {
+      console.error('Video upload error:', err);
+      const blobUrl = URL.createObjectURL(file);
+      setVideoUrl(blobUrl);
+      setVideoUploadStatus(lang === 'ar' ? 'تم تجهيز الفيديو محلياً' : '视频已就绪');
+      setTimeout(() => setVideoUploadStatus(''), 3000);
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handlePosterFileUpload = async (file: File) => {
+    if (!file) return;
+    setIsUploadingPoster(true);
+    try {
+      const safeName = `poster_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_\-\.]/g, '_')}`;
+      const uploadRes = await uploadMediaToServer(file, safeName);
+      await saveMediaToIndexedDb(uploadRes.url, file, safeName);
+      setPosterUrl(uploadRes.url);
+      setUsePosterImage(true);
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setPosterUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingPoster(false);
+    }
+  };
 
   // Manual Order Upload State
   const [isOrderFormOpen, setIsOrderFormOpen] = useState(false);
@@ -1713,34 +1780,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
-                    type="url"
+                    type="text"
                     required
                     value={videoUrl}
                     onChange={(e) => {
                       setVideoUrl(e.target.value);
                       setVideoTestError(false);
                     }}
-                    placeholder="https://your-bucket.r2.cloudflarestorage.com/video.mp4"
+                    placeholder="https://... أو /uploads/... أو رابط فيديو"
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
                   />
                   <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
-                    <UploadCloud className="w-4 h-4 text-cyan-400" />
-                    <span>{lang === 'ar' ? 'رفع ملف فيديو' : '上传视频文件'}</span>
+                    {isUploadingVideo ? (
+                      <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                    ) : (
+                      <UploadCloud className="w-4 h-4 text-cyan-400" />
+                    )}
+                    <span>{isUploadingVideo ? (lang === 'ar' ? 'جارِ الرفع...' : '上传中...') : (lang === 'ar' ? 'رفع ملف فيديو' : '上传视频文件')}</span>
                     <input
                       type="file"
-                      accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                      disabled={isUploadingVideo}
+                      accept="video/mp4,video/webm,video/ogg,video/quicktime,.svga,.svga2"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const blobUrl = URL.createObjectURL(file);
-                          setVideoUrl(blobUrl);
-                          setVideoTestError(false);
+                          handleVideoFileUpload(file);
                         }
                       }}
                     />
                   </label>
                 </div>
+
+                {videoUploadStatus && (
+                  <p className="mt-1.5 text-xs text-cyan-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    <span>{videoUploadStatus}</span>
+                  </p>
+                )}
 
                 {/* Quick Presets for User to test without hunting for URLs */}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1814,10 +1891,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="space-y-2 pt-1">
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
-                        type="url"
+                        type="text"
                         value={posterUrl}
                         onChange={(e) => setPosterUrl(e.target.value)}
-                        placeholder="https://images.unsplash.com/photo-xxx?w=800"
+                        placeholder="https://... أو /uploads/... أو رابط صورة"
                         className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
                       />
                       <button
@@ -1839,22 +1916,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </span>
                       </button>
                       <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
-                        <UploadCloud className="w-4 h-4 text-cyan-400" />
-                        <span>{lang === 'ar' ? 'رفع صورة' : '上传图片'}</span>
+                        {isUploadingPoster ? (
+                          <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                        ) : (
+                          <UploadCloud className="w-4 h-4 text-cyan-400" />
+                        )}
+                        <span>{isUploadingPoster ? (lang === 'ar' ? 'جارِ الرفع...' : '上传中...') : (lang === 'ar' ? 'رفع صورة' : '上传图片')}</span>
                         <input
                           type="file"
+                          disabled={isUploadingPoster}
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const reader = new FileReader();
-                              reader.onload = () => {
-                                if (typeof reader.result === 'string') {
-                                  setPosterUrl(reader.result);
-                                }
-                              };
-                              reader.readAsDataURL(file);
+                              handlePosterFileUpload(file);
                             }
                           }}
                         />
@@ -2017,7 +2093,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {t.deliveryUrlInput}
                     </label>
                     <input
-                      type="url"
+                      type="text"
                       value={deliveryUrl}
                       onChange={(e) => setDeliveryUrl(e.target.value)}
                       placeholder="https://cdn.example.com/gifts/gift-bundle.zip"

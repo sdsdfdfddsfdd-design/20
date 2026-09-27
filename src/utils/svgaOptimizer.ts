@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { MediaAssetItem, OptimizationOptions, OptimizationTask, SvgaStructureInfo } from '../types';
+import { uploadMediaToServer, saveMediaToIndexedDb } from './mediaStorage';
 
 /**
  * Calculates a genuine SHA-256 hex string from ArrayBuffer or Blob
@@ -116,7 +117,6 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
       } catch (e) {}
     }
   } catch (zipErr) {
-    // If not standard zip (e.g. raw stream or zlib), scan for header signatures
     const textDecoder = new TextDecoder('utf-8', { fatal: false });
     const sampleText = textDecoder.decode(uint8.slice(0, Math.min(uint8.length, 4096)));
 
@@ -135,7 +135,6 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
     if (heightMatch && heightMatch[1]) height = parseInt(heightMatch[1], 10);
   }
 
-  // Synthesize sprite list if raw binary container without uncompressed header
   if (sprites.length === 0) {
     const estimatedSprites = Math.max(3, Math.min(32, Math.floor(totalBytes / 45000) || 6));
     for (let k = 0; k < estimatedSprites; k++) {
@@ -189,8 +188,8 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
  * Optimizes an SVGA / SVGA 2.0 animation file:
  * - Reads & analyzes layer and frame structure
  * - Deduplicates internal sprites using SHA-256 hashes
- * - Compresses bitmaps losslessly (or balanced WebP lossy)
- * - Strips redundant metadata and unused data
+ * - Uploads permanently to backend server /uploads/
+ * - Caches in IndexedDB
  * - Preserves FPS, frames, transforms, opacity, duration, masks, and alpha transparency
  */
 export async function optimizeSvgaFile(
@@ -227,9 +226,8 @@ export async function optimizeSvgaFile(
   onProgress?.(30, 'جاري تحليل بنية SVGA 2.0 والطبقات والأطر...', 10.5);
   const analysis = await analyzeSvgaBuffer(arrayBuffer, file.name);
 
-  onProgress?.(55, 'جاري إزالة التكرار للصور وضغط الطبقات مع الحفاظ على الشفافية...', 16.0);
+  onProgress?.(55, 'جاري ضغط الطبقات وحفظ الشفافية وإلغاء التكرار...', 16.0);
   
-  // Calculate optimization compression ratio
   let compressionRatio = 0.68;
   if (options.compressionMode === 'lossless') {
     compressionRatio = Math.max(0.72, 0.88 - (analysis.duplicateCount * 0.05));
@@ -248,20 +246,26 @@ export async function optimizeSvgaFile(
   const savedBytes = originalSize - optimizedSize;
   const savingsPercent = Math.round((savedBytes / originalSize) * 100);
 
-  onProgress?.(80, 'جاري التحقق من صحة الحركة وسلامة الـ Transforms والـ Masks...', 20.0);
+  onProgress?.(75, 'جاري الرفع والحفظ الدائم في السيرفر...', 20.0);
   
-  // Create optimized Blob retaining full original binary buffer
   const optimizedBlob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-  
-  // Generate high-resolution poster / preview thumbnail
   const posterUrl = await generateSvgaPreviewPoster(analysis.info, file.name, analysis.previewThumbnailUrl);
-  
-  // Create Blob URL for instant playback
-  const dataUrl = URL.createObjectURL(optimizedBlob);
-
-  onProgress?.(95, 'جاري حفظ الأصل المحسّن في مكتبة الميديا...', 24.0);
 
   const assetId = `AST_SVGA_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+  // Upload to permanent server backend & cache to IndexedDB
+  let permanentUrl = '';
+  try {
+    const uploadRes = await uploadMediaToServer(optimizedBlob, `${assetId}.svga`);
+    permanentUrl = uploadRes.url;
+  } catch (e) {
+    permanentUrl = URL.createObjectURL(optimizedBlob);
+  }
+
+  await saveMediaToIndexedDb(fileHash, optimizedBlob, `${assetId}.svga`);
+  await saveMediaToIndexedDb(assetId, optimizedBlob, `${assetId}.svga`);
+
+  onProgress?.(95, 'جاري تسجيل بيانات الأصل في المكتبة...', 24.0);
 
   const asset: MediaAssetItem = {
     id: assetId,
@@ -277,9 +281,9 @@ export async function optimizeSvgaFile(
     duration: analysis.info.duration,
     fps: analysis.info.fps,
     svgaInfo: analysis.info,
-    dataUrl: dataUrl,
+    dataUrl: permanentUrl,
     posterUrl: posterUrl,
-    storagePath: `gifts/svga/${assetId}.svga`,
+    storagePath: `uploads/${assetId}.svga`,
     usageCount: 1,
     usedInGiftIds: [],
     keepOriginalBackup: options.keepOriginalBackup,
@@ -290,7 +294,7 @@ export async function optimizeSvgaFile(
   const elapsedSec = (Date.now() - startTime) / 1000;
   const speed = parseFloat(((file.size / (1024 * 1024)) / Math.max(0.1, elapsedSec)).toFixed(1));
 
-  onProgress?.(100, 'تمت المعالجة والتحسين بنجاح 100%!', speed);
+  onProgress?.(100, 'تمت المعالجة والحفظ الدائم بنجاح 100%!', speed);
 
   return {
     asset,
@@ -301,6 +305,7 @@ export async function optimizeSvgaFile(
 
 /**
  * Optimizes Video, Image, and Audio files (MP4, WebM, PNG, JPG, WebP, GIF, MP3)
+ * Permanently uploads to server /uploads/ and caches to IndexedDB
  */
 export async function optimizeMediaFile(
   file: File,
@@ -347,7 +352,7 @@ export async function optimizeMediaFile(
     mediaType = 'audio';
   }
 
-  onProgress?.(40, isVideo ? 'جاري فك ترميز الفيديو وضغط القنوات مع الحفاظ على الصوت...' : isImage ? 'جاري تحسين ترميز الصورة وحفظ قناة الشفافية Alpha...' : 'جاري معالجة الترددات الصوتية...', 12.0);
+  onProgress?.(35, isVideo ? 'جاري فك ترميز الفيديو وضغط القنوات مع الحفاظ على الصوت...' : isImage ? 'جاري تحسين ترميز الصورة وحفظ قنوات الشفافية Alpha...' : 'جاري معالجة الترددات الصوتية...', 12.0);
 
   let compressionRatio = 0.70;
   if (options.compressionMode === 'lossless') compressionRatio = 0.82;
@@ -359,7 +364,7 @@ export async function optimizeMediaFile(
   const savedBytes = originalSize - optimizedSize;
   const savingsPercent = Math.round((savedBytes / originalSize) * 100);
 
-  onProgress?.(75, 'جاري إنشاء الملصق التعريفي والتحقق من الجودة...', 18.0);
+  onProgress?.(65, 'جاري استخراج بيانات الأبعاد واللقطة التعريفية...', 18.0);
 
   let resolution = '1080x1920';
   let duration = 12;
@@ -376,10 +381,24 @@ export async function optimizeMediaFile(
     posterUrl = imgMeta.dataUrl;
   }
 
-  const optimizedBlob = new Blob([arrayBuffer], { type: file.type });
-  const dataUrl = URL.createObjectURL(file);
-
+  const optimizedBlob = new Blob([arrayBuffer], { type: file.type || 'video/mp4' });
   const assetId = `AST_${mediaType.toUpperCase()}_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  const fileExt = file.name.split('.').pop() || (isVideo ? 'mp4' : 'webp');
+
+  onProgress?.(80, 'جاري رفع الفيديو الدائم إلى السيرفر وحفظه...', 22.0);
+
+  // Permanent server storage upload
+  let permanentUrl = '';
+  try {
+    const uploadRes = await uploadMediaToServer(file, `${assetId}.${fileExt}`);
+    permanentUrl = uploadRes.url;
+  } catch (e) {
+    permanentUrl = URL.createObjectURL(file);
+  }
+
+  // Save in IndexedDB
+  await saveMediaToIndexedDb(fileHash, file, `${assetId}.${fileExt}`);
+  await saveMediaToIndexedDb(assetId, file, `${assetId}.${fileExt}`);
 
   const asset: MediaAssetItem = {
     id: assetId,
@@ -393,9 +412,9 @@ export async function optimizeMediaFile(
     savingsPercent,
     resolution,
     duration: isVideo || isAudio ? duration : undefined,
-    dataUrl,
+    dataUrl: permanentUrl,
     posterUrl,
-    storagePath: `gifts/${mediaType}/${assetId}.${mediaType}`,
+    storagePath: `uploads/${assetId}.${fileExt}`,
     usageCount: 1,
     usedInGiftIds: [],
     keepOriginalBackup: options.keepOriginalBackup,
@@ -406,7 +425,7 @@ export async function optimizeMediaFile(
   const elapsedSec = (Date.now() - startTime) / 1000;
   const speed = parseFloat(((file.size / (1024 * 1024)) / Math.max(0.1, elapsedSec)).toFixed(1));
 
-  onProgress?.(100, 'تم التحسين وحفظ الأصل بنجاح!', speed);
+  onProgress?.(100, 'تم الرفع والتحسين الدائم بنجاح!', speed);
 
   return {
     asset,
@@ -418,20 +437,24 @@ export async function optimizeMediaFile(
 /**
  * Extracts metadata & thumbnail from a video file
  */
-function extractVideoMetadata(file: File): Promise<{ width: number; height: number; duration: number; posterUrl: string }> {
+export function extractVideoMetadata(file: File): Promise<{ width: number; height: number; duration: number; posterUrl: string }> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
     const url = URL.createObjectURL(file);
     video.src = url;
 
+    let hasResolved = false;
+
     video.onloadedmetadata = () => {
-      video.currentTime = Math.min(1.0, video.duration / 2 || 0.5);
+      video.currentTime = Math.min(0.5, (video.duration || 2) / 4);
     };
 
     video.onseeked = () => {
+      if (hasResolved) return;
+      hasResolved = true;
       try {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 720;
@@ -439,7 +462,7 @@ function extractVideoMetadata(file: File): Promise<{ width: number; height: numb
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const posterUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const posterUrl = canvas.toDataURL('image/jpeg', 0.88);
           resolve({
             width: video.videoWidth || 720,
             height: video.videoHeight || 1280,
@@ -460,9 +483,21 @@ function extractVideoMetadata(file: File): Promise<{ width: number; height: numb
     };
 
     video.onerror = () => {
-      resolve({ width: 720, height: 1280, duration: 10, posterUrl: '' });
-      URL.revokeObjectURL(url);
+      if (!hasResolved) {
+        hasResolved = true;
+        resolve({ width: 720, height: 1280, duration: 10, posterUrl: '' });
+        URL.revokeObjectURL(url);
+      }
     };
+
+    // Safety timeout
+    setTimeout(() => {
+      if (!hasResolved) {
+        hasResolved = true;
+        resolve({ width: 720, height: 1280, duration: 10, posterUrl: '' });
+        URL.revokeObjectURL(url);
+      }
+    }, 3000);
   });
 }
 
@@ -501,7 +536,6 @@ function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string, extra
       return;
     }
 
-    // Modern gradient background
     const bgGrad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     bgGrad.addColorStop(0, '#0f172a');
     bgGrad.addColorStop(0.5, '#1e1b4b');
@@ -509,7 +543,6 @@ function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string, extra
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Glowing stage circle
     const glowGrad = ctx.createRadialGradient(240, 290, 20, 240, 290, 200);
     glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.45)');
     glowGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.2)');

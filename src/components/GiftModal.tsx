@@ -10,11 +10,15 @@ import {
   Sparkles,
   MessageCircle,
   CheckCircle2,
-  Share2
+  Share2,
+  RefreshCw,
+  AlertCircle,
+  Film
 } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
 
 interface GiftModalProps {
   gift: GiftItem | null;
@@ -43,14 +47,63 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   const [duration, setDuration] = useState(14);
   const [streamBg, setStreamBg] = useState<'dark' | 'stage' | 'green'>('dark');
   const [isFavorited, setIsFavorited] = useState(false);
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [hasVideoError, setHasVideoError] = useState(false);
 
   useEffect(() => {
-    if (gift && videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-    }
+    if (!gift) return;
+
+    setHasVideoError(false);
+    setCurrentTime(0);
+
+    const initialUrl = resolveMediaUrl(gift.videoUrl);
+    setVideoSrc(initialUrl);
+
+    // Try to ensure video plays
+    const timer = setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+        videoRef.current.muted = isMuted;
+        videoRef.current.play().catch(() => {
+          setIsPlaying(false);
+        });
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [gift]);
+
+  // If video fails to load, try recovery from IndexedDB or Proxy
+  const handleVideoError = async () => {
+    if (!gift) return;
+    try {
+      // 1. Check if we have this media cached in IndexedDB
+      const cachedBlob = await getMediaFromIndexedDb(gift.id) || await getMediaFromIndexedDb(gift.videoUrl);
+      if (cachedBlob) {
+        const localBlobUrl = URL.createObjectURL(cachedBlob);
+        setVideoSrc(localBlobUrl);
+        setHasVideoError(false);
+        setTimeout(() => {
+          videoRef.current?.play().catch(() => {});
+        }, 100);
+        return;
+      }
+
+      // 2. If external link failed (CORS), try routing through server proxy
+      if (gift.videoUrl && (gift.videoUrl.startsWith('http://') || gift.videoUrl.startsWith('https://')) && !videoSrc.includes('/api/proxy-media')) {
+        const proxyUrl = getProxyMediaUrl(gift.videoUrl);
+        setVideoSrc(proxyUrl);
+        setHasVideoError(false);
+        setTimeout(() => {
+          videoRef.current?.play().catch(() => {});
+        }, 100);
+        return;
+      }
+    } catch (e) {
+      console.warn('Could not recover video from cache or proxy:', e);
+    }
+    setHasVideoError(true);
+  };
 
   if (!gift) return null;
 
@@ -69,7 +122,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
-      if (videoRef.current.duration) {
+      if (videoRef.current.duration && !isNaN(videoRef.current.duration)) {
         setDuration(videoRef.current.duration);
       }
     }
@@ -81,9 +134,20 @@ export const GiftModal: React.FC<GiftModalProps> = ({
         videoRef.current.pause();
         setIsPlaying(false);
       } else {
-        videoRef.current.play();
-        setIsPlaying(true);
+        videoRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch(() => {
+          setIsPlaying(false);
+        });
       }
+    }
+  };
+
+  const handleToggleMute = () => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    if (videoRef.current) {
+      videoRef.current.muted = newMuted;
     }
   };
 
@@ -210,7 +274,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
             >
               {isSvga ? (
                 <SvgaPlayer
-                  src={gift.videoUrl}
+                  src={videoSrc || gift.videoUrl}
                   autoPlay={isPlaying}
                   loop={true}
                   isMuted={isMuted}
@@ -218,16 +282,64 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <video
-                  ref={videoRef}
-                  src={gift.videoUrl}
-                  loop
-                  muted={isMuted}
-                  playsInline
-                  onTimeUpdate={handleTimeUpdate}
-                  onClick={handleTogglePlay}
-                  className="w-full h-full object-contain cursor-pointer"
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    key={videoSrc || gift.videoUrl}
+                    src={videoSrc || gift.videoUrl}
+                    poster={gift.posterUrl}
+                    loop
+                    autoPlay={isPlaying}
+                    muted={isMuted}
+                    playsInline
+                    preload="auto"
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={() => {
+                      if (videoRef.current && videoRef.current.duration) {
+                        setDuration(videoRef.current.duration);
+                      }
+                    }}
+                    onCanPlay={() => {
+                      if (isPlaying && videoRef.current) {
+                        videoRef.current.play().catch(() => {});
+                      }
+                    }}
+                    onError={handleVideoError}
+                    onClick={handleTogglePlay}
+                    className="w-full h-full object-contain cursor-pointer"
+                  />
+
+                  {hasVideoError && (
+                    <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-20">
+                      {gift.posterUrl ? (
+                        <img 
+                          src={gift.posterUrl} 
+                          alt={displayTitle} 
+                          className="w-24 h-24 object-cover rounded-xl border border-slate-700 mb-3 shadow-lg"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3">
+                          <Film className="w-8 h-8" />
+                        </div>
+                      )}
+                      <p className="text-xs font-semibold text-slate-300 mb-2">
+                        {lang === 'ar' ? 'تعذر تشغيل الفيديو المباشر من الرابط' : 'Unable to play video directly'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasVideoError(false);
+                          const url = resolveMediaUrl(gift.videoUrl);
+                          setVideoSrc(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now());
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Watermark badge */}
@@ -237,10 +349,10 @@ export const GiftModal: React.FC<GiftModalProps> = ({
               </div>
 
               {/* Pause icon overlay */}
-              {!isPlaying && (
+              {!isPlaying && !hasVideoError && (
                 <div 
                   onClick={handleTogglePlay}
-                  className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer"
+                  className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer z-10"
                 >
                   <div className="w-14 h-14 rounded-full bg-cyan-500/90 text-white flex items-center justify-center shadow-xl hover:scale-110 transition-transform">
                     <Play className="w-7 h-7 ml-1 fill-current" />
@@ -269,20 +381,22 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={handleTogglePlay}
-                    className="p-1 rounded-lg hover:bg-slate-800 text-slate-200 transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition-colors cursor-pointer"
+                    title={isPlaying ? 'Pause' : 'Play'}
                   >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    {isPlaying ? <Pause className="w-4 h-4 text-cyan-400" /> : <Play className="w-4 h-4 text-slate-200" />}
                   </button>
                   <button
-                    onClick={() => setIsMuted(!isMuted)}
-                    className="p-1 rounded-lg hover:bg-slate-800 text-slate-200 transition-colors"
+                    onClick={handleToggleMute}
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition-colors cursor-pointer"
+                    title={isMuted ? 'Unmute' : 'Mute'}
                   >
                     {isMuted ? <VolumeX className="w-4 h-4 text-slate-500" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
                   </button>
                 </div>
 
                 <div className="text-[10px] text-slate-400 font-mono">
-                  MP4 / SVGA / VAP
+                  {isSvga ? 'SVGA 2.0 / Vector' : 'MP4 60FPS / HD'}
                 </div>
               </div>
             </div>

@@ -1,0 +1,206 @@
+import express, { Request, Response } from 'express';
+import { createServer as createViteServer } from 'vite';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+
+const app = express();
+const PORT = Number(process.env.PORT) || 3000;
+const isProd = process.env.NODE_ENV === 'production';
+
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// Multer storage config
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || (file.mimetype.includes('video') ? '.mp4' : file.mimetype.includes('svga') ? '.svga' : '.bin');
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/\.[^/.]+$/, '');
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    cb(null, `${safeName}_${uniqueSuffix}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 250 * 1024 * 1024 } // 250MB limit
+});
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// CORS headers
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// File Upload Endpoint: Uploads real video / SVGA / image media
+app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  const filename = req.file.filename;
+  const fileUrl = `/uploads/${filename}`;
+  const fileSize = req.file.size;
+  const mimeType = req.file.mimetype;
+
+  res.json({
+    success: true,
+    url: fileUrl,
+    filename,
+    size: fileSize,
+    mimeType
+  });
+});
+
+// Video / Audio / SVGA Streaming with HTTP 206 Partial Content (Range requests)
+// Critical for iOS Safari & Android mobile video playback!
+app.get('/uploads/:filename', (req: Request, res: Response) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(UPLOADS_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('File not found');
+  }
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  let contentType = 'application/octet-stream';
+  if (filename.endsWith('.mp4')) contentType = 'video/mp4';
+  else if (filename.endsWith('.webm')) contentType = 'video/webm';
+  else if (filename.endsWith('.mov')) contentType = 'video/quicktime';
+  else if (filename.endsWith('.webp')) contentType = 'image/webp';
+  else if (filename.endsWith('.png')) contentType = 'image/png';
+  else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) contentType = 'image/jpeg';
+  else if (filename.endsWith('.gif')) contentType = 'image/gif';
+  else if (filename.endsWith('.svga') || filename.endsWith('.svga2')) contentType = 'application/octet-stream';
+
+  const commonHeaders = {
+    'Accept-Ranges': 'bytes',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length, Content-Type',
+    'Cache-Control': 'public, max-age=31536000, immutable'
+  };
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (start >= fileSize) {
+      res.status(416).set(commonHeaders).send(`Requested range not satisfiable\n${start} >= ${fileSize}`);
+      return;
+    }
+
+    const chunksize = end - start + 1;
+    const fileStream = fs.createReadStream(filePath, { start, end });
+
+    res.writeHead(206, {
+      ...commonHeaders,
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Content-Length': chunksize,
+      'Content-Type': contentType,
+    });
+
+    fileStream.pipe(res);
+  } else {
+    res.writeHead(200, {
+      ...commonHeaders,
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+    });
+
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
+// Proxy Media Endpoint (for external CDN videos that block CORS)
+app.get('/api/proxy-media', async (req: Request, res: Response) => {
+  try {
+    const targetUrl = req.query.url as string;
+    if (!targetUrl) {
+      return res.status(400).json({ error: 'Missing url parameter' });
+    }
+
+    const upstreamHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+    };
+
+    if (req.headers.range) {
+      upstreamHeaders['Range'] = req.headers.range;
+    }
+
+    const upstream = await fetch(targetUrl, {
+      headers: upstreamHeaders,
+    });
+
+    if (!upstream.ok && upstream.status !== 206) {
+      return res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
+    }
+
+    const contentType = upstream.headers.get('content-type') || (targetUrl.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream');
+    
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    if (upstream.headers.get('content-range')) {
+      res.setHeader('Content-Range', upstream.headers.get('content-range')!);
+      res.status(206);
+    }
+    if (upstream.headers.get('content-length')) {
+      res.setHeader('Content-Length', upstream.headers.get('content-length')!);
+    }
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Proxy request failed' });
+  }
+});
+
+async function startServer() {
+  if (!isProd) {
+    // Development mode with Vite Middleware
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    // Production mode
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running at http://0.0.0.0:${PORT} (Production: ${isProd})`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

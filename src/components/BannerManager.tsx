@@ -373,10 +373,10 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
 
             {/* Image URL input */}
             <input
-              type="url"
+              type="text"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://images.unsplash.com/... أو رابط الصورة المباشر"
+              placeholder="https://images.unsplash.com/... أو /uploads/... أو رابط الصورة"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-500 font-mono text-xs"
             />
 
