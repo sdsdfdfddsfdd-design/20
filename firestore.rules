@@ -1,56 +1,94 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Global Helper Primitives
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Gifts Collection: Readable by all, writable by authenticated users
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Gifts Collection: Publicly readable by store visitors, writable by authenticated staff
     match /gifts/{giftId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(giftId);
+      allow create, update: if isAuthenticated() && isValidId(giftId) &&
+        incoming().title is string && incoming().title.size() <= 250 &&
+        incoming().price is number && incoming().price >= 0;
+      allow delete: if isAuthenticated() && isValidId(giftId);
     }
 
-    // Deliveries Collection: Readable by all, writable by authenticated users
+    // 2. Deliveries Collection: Readable & Writable by authenticated staff
     match /deliveries/{deliveryId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isValidId(deliveryId);
+      allow create, update: if isAuthenticated() && isValidId(deliveryId) &&
+        incoming().orderId is string &&
+        incoming().price is number;
+      allow delete: if isAuthenticated() && isValidId(deliveryId);
     }
 
-    // Employees Collection: Readable by all, writable by authenticated users
+    // 3. Employees Collection: Secure staff records & creator information
     match /employees/{employeeId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(employeeId);
+      allow create, update: if isAuthenticated() && isValidId(employeeId) &&
+        incoming().name is string && incoming().name.size() <= 200;
+      allow delete: if isAuthenticated() && isValidId(employeeId);
     }
 
-    // Users / Accounts Collection: Readable by all, writable by authenticated users
+    // 4. Users Accounts Collection
     match /users/{userId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(userId);
+      allow create, update: if isAuthenticated() && isValidId(userId) &&
+        incoming().name is string;
+      allow delete: if isAuthenticated() && isValidId(userId);
     }
 
-    // Banners Collection: Readable by all, writable by authenticated users
+    // 5. Banners Collection: Publicly readable for storefront, writable by staff
     match /banners/{bannerId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(bannerId);
+      allow create, update: if isAuthenticated() && isValidId(bannerId) &&
+        incoming().title is string;
+      allow delete: if isAuthenticated() && isValidId(bannerId);
     }
 
-    // Categories Collection: Readable by all, writable by authenticated users
+    // 6. Categories Collection: Publicly readable for store navigation, writable by staff
     match /categories/{categoryId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(categoryId);
+      allow create, update: if isAuthenticated() && isValidId(categoryId) &&
+        incoming().name is string;
+      allow delete: if isAuthenticated() && isValidId(categoryId);
     }
 
-    // Site Settings Collection: Readable by all, writable by authenticated users
+    // 7. Site Settings Collection: Publicly readable, writable by staff
     match /settings/{settingId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(settingId);
+      allow create, update: if isAuthenticated() && isValidId(settingId);
+      allow delete: if isAuthenticated() && isValidId(settingId);
     }
 
-    // Assets Collection: Readable by all, writable by authenticated users
+    // 8. Media Assets Collection: Accessible and manageable by authenticated managers
     match /assets/{assetId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isValidId(assetId);
+      allow create, update: if isAuthenticated() && isValidId(assetId) &&
+        incoming().hash is string &&
+        incoming().type is string &&
+        incoming().optimizedSize is number;
+      allow delete: if isAuthenticated() && isValidId(assetId);
     }
   }
 }

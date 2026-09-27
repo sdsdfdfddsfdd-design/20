@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
+import { SvgaPlayer } from './SvgaPlayer';
 
 interface GiftModalProps {
   gift: GiftItem | null;
@@ -52,6 +53,16 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   }, [gift]);
 
   if (!gift) return null;
+
+  const isSvga = Boolean(
+    gift.videoUrl && (
+      gift.videoUrl.toLowerCase().endsWith('.svga') ||
+      gift.videoUrl.toLowerCase().endsWith('.svga2') ||
+      gift.videoUrl.includes('.svga?') ||
+      gift.videoUrl.includes('data:application/octet-stream') ||
+      gift.videoUrl.includes('gifts/svga')
+    ) && !gift.videoUrl.toLowerCase().includes('.mp4') && !gift.videoUrl.toLowerCase().includes('.webm')
+  );
 
   const displayTitle = lang === 'ar' && gift.titleAr ? gift.titleAr : lang === 'en' && gift.titleEn ? gift.titleEn : gift.title;
 
@@ -187,7 +198,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
               </div>
             </div>
 
-            {/* Video Canvas Stage with Centered Object Contain */}
+            {/* Video / SVGA Canvas Stage with Centered Object Contain */}
             <div 
               className={`relative w-full flex-1 min-h-0 rounded-xl overflow-hidden shadow-inner transition-colors flex items-center justify-center ${
                 streamBg === 'dark' 
@@ -197,16 +208,27 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                   : 'bg-[#00b140]'
               }`}
             >
-              <video
-                ref={videoRef}
-                src={gift.videoUrl}
-                loop
-                muted={isMuted}
-                playsInline
-                onTimeUpdate={handleTimeUpdate}
-                onClick={handleTogglePlay}
-                className="w-full h-full object-contain cursor-pointer"
-              />
+              {isSvga ? (
+                <SvgaPlayer
+                  src={gift.videoUrl}
+                  autoPlay={isPlaying}
+                  loop={true}
+                  isMuted={isMuted}
+                  backdrop={streamBg === 'stage' ? 'dark' : streamBg === 'dark' ? 'black' : 'checker'}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  src={gift.videoUrl}
+                  loop
+                  muted={isMuted}
+                  playsInline
+                  onTimeUpdate={handleTimeUpdate}
+                  onClick={handleTogglePlay}
+                  className="w-full h-full object-contain cursor-pointer"
+                />
+              )}
 
               {/* Watermark badge */}
               <div className="absolute top-3 left-3 pointer-events-none opacity-40 flex items-center gap-1.5 text-xs text-white">

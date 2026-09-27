@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Play, Eye, ShoppingCart, CheckCircle2, Sparkles, Flame, MessageCircle, Video } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
+import { SvgaPlayer } from './SvgaPlayer';
 
 interface GiftCardProps {
   gift: GiftItem;
@@ -23,6 +24,15 @@ export const GiftCard: React.FC<GiftCardProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasPoster = Boolean(gift.posterUrl && gift.posterUrl.trim());
+  const isSvga = Boolean(
+    gift.videoUrl && (
+      gift.videoUrl.toLowerCase().endsWith('.svga') ||
+      gift.videoUrl.toLowerCase().endsWith('.svga2') ||
+      gift.videoUrl.includes('.svga?') ||
+      gift.videoUrl.includes('data:application/octet-stream') ||
+      gift.videoUrl.includes('gifts/svga')
+    ) && !gift.videoUrl.toLowerCase().includes('.mp4') && !gift.videoUrl.toLowerCase().includes('.webm')
+  );
 
   const startTime = typeof gift.previewStartTime === 'number' ? gift.previewStartTime : 0;
 
@@ -71,25 +81,46 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           />
         )}
 
-        {/* Live Video Stream Preview (Takes full stage when no poster image, or plays on hover) */}
-        <video
-          ref={videoRef}
-          src={gift.videoUrl ? `${gift.videoUrl}#t=${startTime > 0 ? startTime : 0.001}` : undefined}
-          onLoadedMetadata={(e) => {
-            if (startTime > 0) {
-              e.currentTarget.currentTime = startTime;
-            }
-          }}
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
-            hasPoster
-              ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
-              : 'opacity-100'
-          }`}
-        />
+        {/* Live SVGA or Video Stream Preview */}
+        {isSvga && gift.videoUrl ? (
+          <div
+            className={`w-full h-full flex items-center justify-center transition-opacity duration-300 ${
+              hasPoster
+                ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
+                : 'opacity-100'
+            }`}
+          >
+            {isHovered || !hasPoster ? (
+              <SvgaPlayer
+                src={gift.videoUrl}
+                autoPlay={true}
+                loop={true}
+                isMuted={true}
+                backdrop="checker"
+                className="w-full h-full object-contain"
+              />
+            ) : null}
+          </div>
+        ) : (
+          <video
+            ref={videoRef}
+            src={gift.videoUrl ? `${gift.videoUrl}#t=${startTime > 0 ? startTime : 0.001}` : undefined}
+            onLoadedMetadata={(e) => {
+              if (startTime > 0) {
+                e.currentTarget.currentTime = startTime;
+              }
+            }}
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              hasPoster
+                ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
+                : 'opacity-100'
+            }`}
+          />
+        )}
 
         {/* Video-Only Badge (if no poster image) */}
         {!hasPoster && (

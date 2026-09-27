@@ -61,6 +61,7 @@ import { PrintDocumentModal } from './PrintDocumentModal';
 import { BannerManager } from './BannerManager';
 import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { GiftMediaOptimizer } from './GiftMediaOptimizer';
+import { SvgaPlayer } from './SvgaPlayer';
 import { 
   addGift, 
   updateGift, 
@@ -2132,65 +2133,78 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Video Monitor Box */}
               <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl flex items-center justify-center group">
                 {videoUrl ? (
-                  <>
-                    <video
+                  videoUrl.toLowerCase().endsWith('.svga') || videoUrl.toLowerCase().endsWith('.svga2') || videoUrl.includes('data:application/octet-stream') || formatsText.toUpperCase().includes('SVGA') ? (
+                    <SvgaPlayer
                       key={videoUrl}
-                      ref={previewVideoRef}
                       src={videoUrl}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      onLoadedData={() => setVideoTestError(false)}
-                      onCanPlay={() => setVideoTestError(false)}
-                      onTimeUpdate={() => {
-                        if (previewVideoRef.current) {
-                          setVideoScrubTime(previewVideoRef.current.currentTime);
-                        }
-                      }}
-                      onLoadedMetadata={() => {
-                        if (previewVideoRef.current) {
-                          setVideoDuration(previewVideoRef.current.duration || 14);
-                        }
-                      }}
+                      autoPlay={isVideoPlaying}
+                      loop={true}
+                      className="w-full h-full object-contain"
+                      backdrop="checker"
                       onError={() => setVideoTestError(true)}
-                      className="w-full h-full object-contain cursor-pointer"
-                      onClick={() => {
-                        if (!previewVideoRef.current) return;
-                        if (isVideoPlaying) {
-                          previewVideoRef.current.pause();
-                          setIsVideoPlaying(false);
-                        } else {
-                          previewVideoRef.current.play().catch(() => {});
-                          setIsVideoPlaying(true);
-                        }
-                      }}
+                      onLoaded={() => setVideoTestError(false)}
                     />
-
-                    {/* Overlay Play Indicator when paused */}
-                    {!isVideoPlaying && (
-                      <div
-                        onClick={() => {
+                  ) : (
+                    <>
+                      <video
+                        key={videoUrl}
+                        ref={previewVideoRef}
+                        src={videoUrl}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        onLoadedData={() => setVideoTestError(false)}
+                        onCanPlay={() => setVideoTestError(false)}
+                        onTimeUpdate={() => {
                           if (previewVideoRef.current) {
+                            setVideoScrubTime(previewVideoRef.current.currentTime);
+                          }
+                        }}
+                        onLoadedMetadata={() => {
+                          if (previewVideoRef.current) {
+                            setVideoDuration(previewVideoRef.current.duration || 14);
+                          }
+                        }}
+                        onError={() => setVideoTestError(true)}
+                        className="w-full h-full object-contain cursor-pointer"
+                        onClick={() => {
+                          if (!previewVideoRef.current) return;
+                          if (isVideoPlaying) {
+                            previewVideoRef.current.pause();
+                            setIsVideoPlaying(false);
+                          } else {
                             previewVideoRef.current.play().catch(() => {});
                             setIsVideoPlaying(true);
                           }
                         }}
-                        className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center cursor-pointer transition-opacity"
-                      >
-                        <div className="w-12 h-12 rounded-full bg-cyan-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur">
-                          <Play className="w-6 h-6 ml-0.5 fill-current" />
+                      />
+
+                      {/* Overlay Play Indicator when paused */}
+                      {!isVideoPlaying && (
+                        <div
+                          onClick={() => {
+                            if (previewVideoRef.current) {
+                              previewVideoRef.current.play().catch(() => {});
+                              setIsVideoPlaying(true);
+                            }
+                          }}
+                          className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center cursor-pointer transition-opacity"
+                        >
+                          <div className="w-12 h-12 rounded-full bg-cyan-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur">
+                            <Play className="w-6 h-6 ml-0.5 fill-current" />
+                          </div>
+                          <span className="text-[11px] font-bold text-cyan-200 mt-2 bg-black/60 px-2 py-0.5 rounded-full">
+                            {lang === 'ar' ? 'الفيديو متوقف مؤقتاً' : '已暂停'}
+                          </span>
                         </div>
-                        <span className="text-[11px] font-bold text-cyan-200 mt-2 bg-black/60 px-2 py-0.5 rounded-full">
-                          {lang === 'ar' ? 'الفيديو متوقف مؤقتاً' : '已暂停'}
-                        </span>
-                      </div>
-                    )}
-                  </>
+                      )}
+                    </>
+                  )
                 ) : (
                   <div className="text-center p-4 text-slate-500 text-xs space-y-2">
                     <Video className="w-8 h-8 mx-auto opacity-40" />
-                    <p>{lang === 'ar' ? 'ضع رابط الفيديو بالأعلى لعرض المعاينة المباشرة هنا فوراً' : '在此处实时预览外链播放效果'}</p>
+                    <p>{lang === 'ar' ? 'ضع رابط الفيديو أو ملف SVGA بالأعلى لعرض المعاينة المباشرة هنا فوراً' : '在此处实时预览外链播放效果'}</p>
                   </div>
                 )}
 
@@ -3853,6 +3867,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           lang={lang}
           onOpenCreateGiftWithAsset={handleCreateGiftFromAsset}
           existingGifts={gifts}
+          categories={categories}
+          onBatchGiftsCreated={(createdGifts) => {
+            setGifts(prev => [...createdGifts, ...prev]);
+            setSuccessMessage(
+              lang === 'ar'
+                ? `تم نشر (${createdGifts.length}) هدية جديدة بنجاح في المتجر!`
+                : `Successfully published ${createdGifts.length} new gifts to the store!`
+            );
+            setTimeout(() => setSuccessMessage(null), 4000);
+          }}
         />
       )}
     </div>

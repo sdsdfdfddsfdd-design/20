@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Play, 
   Pause, 
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { MediaAssetItem, GiftItem } from '../types';
 import { formatBytes, formatDuration } from '../utils/svgaOptimizer';
+import { SvgaPlayer } from './SvgaPlayer';
 
 interface SvgaPlayerModalProps {
   asset: MediaAssetItem | null;
@@ -52,132 +53,15 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const animFrameRef = useRef<number | null>(null);
 
-  const totalFrames = asset.svgaInfo?.frames || Math.round((asset.duration || 4) * (asset.fps || 30));
+  const isSvga = asset.type === 'svga' || asset.type === 'svga2';
+  const isVideo = asset.type === 'mp4';
+  const isImage = asset.type === 'webp' || asset.type === 'jpeg' || asset.type === 'png' || asset.type === 'gif';
+
+  const totalFrames = asset.svgaInfo?.frames || Math.round((asset.duration || 4) * (asset.fps || 30)) || 60;
   const fps = asset.fps || 30;
   const duration = asset.duration || parseFloat((totalFrames / fps).toFixed(1));
-
-  // Canvas animation loop for SVGA rendering simulation
-  useEffect(() => {
-    if (asset.type === 'mp4' || asset.type === 'webp' || asset.type === 'jpeg' || asset.type === 'png' || asset.type === 'gif') {
-      return;
-    }
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let frame = currentFrame;
-    let lastTimestamp = performance.now();
-    const frameInterval = 1000 / (fps * speed);
-
-    const render = (now: number) => {
-      if (isPlaying) {
-        const elapsed = now - lastTimestamp;
-        if (elapsed >= frameInterval) {
-          frame = (frame + 1) % Math.max(1, totalFrames);
-          setCurrentFrame(frame);
-          lastTimestamp = now;
-        }
-      }
-
-      // Draw simulated frame with vector layers, glows & transforms
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const progress = frame / Math.max(1, totalFrames);
-      const angle = progress * Math.PI * 4;
-      const pulse = 1 + Math.sin(progress * Math.PI * 6) * 0.12;
-
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-
-      // Layer 1: Ambient Stage Glow
-      const glowGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 220 * pulse);
-      glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.4)');
-      glowGrad.addColorStop(0.4, 'rgba(168, 85, 247, 0.25)');
-      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = glowGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, 240 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Layer 2: Rotating Golden Star Burst / Shield
-      ctx.save();
-      ctx.rotate(angle * 0.3);
-      ctx.strokeStyle = '#eab308';
-      ctx.lineWidth = 4;
-      ctx.shadowColor = '#eab308';
-      ctx.shadowBlur = 18;
-      
-      const numRays = 8;
-      for (let i = 0; i < numRays; i++) {
-        const rayAngle = (i * Math.PI * 2) / numRays;
-        const r1 = 60 * pulse;
-        const r2 = 130 * pulse;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(rayAngle) * r1, Math.sin(rayAngle) * r1);
-        ctx.lineTo(Math.cos(rayAngle) * r2, Math.sin(rayAngle) * r2);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // Layer 3: Central Emblem / Gem Graphic
-      ctx.save();
-      ctx.scale(pulse, pulse);
-      const gemGrad = ctx.createLinearGradient(-50, -50, 50, 50);
-      gemGrad.addColorStop(0, '#fef08a');
-      gemGrad.addColorStop(0.5, '#eab308');
-      gemGrad.addColorStop(1, '#a855f7');
-      ctx.fillStyle = gemGrad;
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 25;
-
-      ctx.beginPath();
-      ctx.moveTo(0, -65);
-      ctx.lineTo(60, -10);
-      ctx.lineTo(40, 65);
-      ctx.lineTo(-40, 65);
-      ctx.lineTo(-60, -10);
-      ctx.closePath();
-      ctx.fill();
-
-      // Inner highlight
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.restore();
-
-      // Layer 4: Orbiting Particles (Layer Sprites)
-      const numParticles = 6;
-      for (let p = 0; p < numParticles; p++) {
-        const pAngle = -angle * 0.8 + (p * Math.PI * 2) / numParticles;
-        const pDist = 140 + Math.sin(progress * Math.PI * 8 + p) * 25;
-        const px = Math.cos(pAngle) * pDist;
-        const py = Math.sin(pAngle) * pDist;
-
-        ctx.fillStyle = p % 2 === 0 ? '#38bdf8' : '#ec4899';
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.arc(px, py, 6 + Math.sin(progress * 10 + p) * 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-
-      animFrameRef.current = requestAnimationFrame(render);
-    };
-
-    animFrameRef.current = requestAnimationFrame(render);
-
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [isPlaying, speed, fps, totalFrames, asset.type]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(asset.dataUrl || window.location.href);
@@ -194,7 +78,7 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = asset.dataUrl;
-    a.download = `${asset.name}_optimized.${asset.type === 'svga2' || asset.type === 'svga' ? 'svga' : asset.type}`;
+    a.download = `${asset.name}_optimized.${isSvga ? 'svga' : asset.type}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -235,7 +119,7 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
                   onCreateGiftFromAsset(asset);
                   onClose();
                 }}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>إنشاء هدية بهذا الأصل</span>
@@ -259,69 +143,37 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
             {/* Viewport Simulation Area */}
             <div className="relative flex-1 min-h-[340px] sm:min-h-[440px] flex items-center justify-center p-4 overflow-hidden select-none">
               
-              {/* Dynamic Backdrop Mode */}
-              {backdrop === 'checker' && (
-                <div 
-                  className="absolute inset-0 opacity-20"
-                  style={{
-                    backgroundImage: 'repeating-conic-gradient(#334155 0% 25%, #0f172a 0% 50%)',
-                    backgroundSize: '24px 24px'
-                  }}
-                />
-              )}
-              {backdrop === 'dark' && (
-                <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-indigo-950/40 to-slate-950" />
-              )}
-              {backdrop === 'black' && (
-                <div className="absolute inset-0 bg-black" />
-              )}
-              {backdrop === 'white' && (
-                <div className="absolute inset-0 bg-white" />
-              )}
-              {backdrop === 'livestream' && (
-                <div className="absolute inset-0 bg-slate-900 overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/70" />
-                  {/* Mock Live Room Overlay */}
-                  <div className="absolute top-3 right-3 flex items-center gap-2 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 z-10 text-[11px] text-white">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                    <span>مباشر • Jiawei Live</span>
-                  </div>
-                  <div className="absolute bottom-4 right-4 max-w-xs space-y-1.5 text-xs text-white/90 z-10">
-                    <div className="bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
-                      <span className="text-amber-400 font-bold">المشاهد 1: </span> هدية مذهلة جداً! 🔥
-                    </div>
-                    <div className="bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
-                      <span className="text-cyan-400 font-bold">VIP Host: </span> مؤثرات جياوي الأصلية 3D
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Media Element Rendering */}
-              <div className="relative z-20 max-w-full max-h-[380px] flex items-center justify-center">
-                {asset.type === 'mp4' ? (
+              <div className="relative z-20 w-full h-full max-h-[400px] flex items-center justify-center">
+                {isVideo ? (
                   <video
                     ref={videoRef}
                     src={asset.dataUrl}
                     poster={asset.posterUrl}
                     loop={isLoop}
-                    autoPlay
+                    autoPlay={isPlaying}
                     muted={isMuted}
                     playsInline
                     className="max-h-[380px] w-auto object-contain rounded-xl shadow-2xl drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)]"
                   />
-                ) : asset.type === 'jpeg' || asset.type === 'png' || asset.type === 'webp' || asset.type === 'gif' ? (
+                ) : isImage ? (
                   <img
                     src={asset.dataUrl || asset.posterUrl}
                     alt={asset.name}
                     className="max-h-[360px] w-auto object-contain rounded-xl drop-shadow-2xl"
                   />
                 ) : (
-                  <canvas
-                    ref={canvasRef}
-                    width={asset.svgaInfo?.width ? Math.min(600, asset.svgaInfo.width) : 480}
-                    height={asset.svgaInfo?.height ? Math.min(600, asset.svgaInfo.height) : 480}
-                    className="max-h-[380px] w-auto object-contain drop-shadow-[0_20px_40px_rgba(234,179,8,0.25)]"
+                  <SvgaPlayer
+                    src={asset.dataUrl}
+                    loop={isLoop}
+                    autoPlay={isPlaying}
+                    speed={speed}
+                    isMuted={isMuted}
+                    backdrop={backdrop}
+                    onFrameUpdate={(cur, tot) => {
+                      setCurrentFrame(cur);
+                    }}
+                    className="max-h-[380px] w-auto drop-shadow-[0_20px_40px_rgba(234,179,8,0.25)] rounded-xl"
                   />
                 )}
               </div>
@@ -361,7 +213,13 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setIsPlaying(!isPlaying)}
+                    onClick={() => {
+                      if (isVideo && videoRef.current) {
+                        if (isPlaying) videoRef.current.pause();
+                        else videoRef.current.play();
+                      }
+                      setIsPlaying(!isPlaying);
+                    }}
                     className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all cursor-pointer shadow-md shadow-amber-500/20"
                     title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل'}
                   >
@@ -397,6 +255,14 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
                     }`}
                   >
                     تكرار: {isLoop ? 'ON' : 'OFF'}
+                  </button>
+
+                  <button
+                    onClick={() => setIsMuted(!isMuted)}
+                    className={`p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer`}
+                    title={isMuted ? 'إلغاء الكتم' : 'كتم الصوت'}
+                  >
+                    {isMuted ? <VolumeX className="w-4 h-4 text-slate-500" /> : <Volume2 className="w-4 h-4 text-amber-400" />}
                   </button>
                 </div>
 

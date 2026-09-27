@@ -202,6 +202,7 @@ export interface MediaAssetItem {
   dataUrl: string; // Base64 or Blob storage URL
   posterUrl?: string; // Cover thumbnail
   storagePath?: string;
+  category?: string; // e.g. 'frames', 'gifts', 'cars', 'badges', 'general'
   usageCount: number;
   usedInGiftIds: string[];
   keepOriginalBackup: boolean;

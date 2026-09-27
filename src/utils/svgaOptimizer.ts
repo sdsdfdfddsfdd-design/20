@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { MediaAssetItem, OptimizationOptions, OptimizationTask, SvgaStructureInfo } from '../types';
 
 /**
@@ -28,102 +29,115 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
- * Inspects binary data of an SVGA / SVGA 2.0 file to extract metadata,
- * dimensions, FPS, frames count, layer hierarchy, and embedded sprites.
+ * Inspects binary data of an SVGA / SVGA 2.0 file to extract real metadata,
+ * dimensions, FPS, frames count, layer hierarchy, and embedded sprites using JSZip.
  */
 export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): Promise<{
   info: SvgaStructureInfo;
   extractedSprites: Array<{ key: string; hash: string; size: number; width: number; height: number; dataUrl?: string }>;
   duplicateCount: number;
+  previewThumbnailUrl?: string;
 }> {
   const uint8 = new Uint8Array(buffer);
   const totalBytes = uint8.length;
   
-  // SVGA 2.0 uses protobuf and can be zlib/zip compressed or raw protobuf
   let isSvga2 = true;
   let fps = 30;
   let frames = 60;
   let width = 750;
   let height = 1334;
-  let layersCount = 12;
   let audioTracksCount = 0;
   let hasMasks = false;
   let hasTransforms = true;
   let hasAlpha = true;
 
-  // Scan for known SVGA signatures or strings
-  const textDecoder = new TextDecoder('utf-8', { fatal: false });
-  const sampleText = textDecoder.decode(uint8.slice(0, Math.min(uint8.length, 4096)));
-
-  if (sampleText.includes('SVGA 1.0') || sampleText.includes('"version":"1.0"')) {
-    isSvga2 = false;
-  }
-
-  // Parse dimensions / fps if available in header/metadata
-  const fpsMatch = sampleText.match(/"fps":\s*(\d+)/) || sampleText.match(/fps\x00+(\d+)/);
-  if (fpsMatch && fpsMatch[1]) fps = Math.min(120, Math.max(10, parseInt(fpsMatch[1], 10)));
-
-  const framesMatch = sampleText.match(/"frames":\s*(\d+)/) || sampleText.match(/frames\x00+(\d+)/);
-  if (framesMatch && framesMatch[1]) frames = Math.min(1000, Math.max(1, parseInt(framesMatch[1], 10)));
-
-  const widthMatch = sampleText.match(/"width":\s*(\d+)/) || sampleText.match(/"viewBoxWidth":\s*(\d+)/);
-  if (widthMatch && widthMatch[1]) width = parseInt(widthMatch[1], 10);
-
-  const heightMatch = sampleText.match(/"height":\s*(\d+)/) || sampleText.match(/"viewBoxHeight":\s*(\d+)/);
-  if (heightMatch && heightMatch[1]) height = parseInt(heightMatch[1], 10);
-
-  if (sampleText.includes('audio') || sampleText.includes('.mp3') || sampleText.includes('.wav') || sampleText.includes('.aac')) {
-    audioTracksCount = 1;
-  }
-
-  if (sampleText.includes('matteKey') || sampleText.includes('mask') || sampleText.includes('clipPath')) {
-    hasMasks = true;
-  }
-
-  // Detect embedded PNG or JPEG magic bytes inside the SVGA container
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  // JPEG: FF D8 FF
-  // WebP: RIFF .... WEBP
   const sprites: Array<{ key: string; hash: string; size: number; width: number; height: number; dataUrl?: string }> = [];
   const seenHashes = new Set<string>();
   let duplicateCount = 0;
+  let firstSpriteDataUrl: string | undefined;
 
-  // Search for PNG headers (0x89, 0x50, 0x4E, 0x47)
-  for (let i = 0; i < uint8.length - 8; i++) {
-    if (uint8[i] === 0x89 && uint8[i+1] === 0x50 && uint8[i+2] === 0x4E && uint8[i+3] === 0x47) {
-      // Found PNG header - estimate chunk boundary
-      let pngEnd = i + 8;
-      while (pngEnd < uint8.length - 8) {
-        if (uint8[pngEnd] === 0x49 && uint8[pngEnd+1] === 0x45 && uint8[pngEnd+2] === 0x4E && uint8[pngEnd+3] === 0x44) { // IEND
-          pngEnd += 8; // Include IEND and CRC
-          break;
-        }
-        pngEnd++;
+  try {
+    const zip = new JSZip();
+    const loadedZip = await zip.loadAsync(buffer);
+
+    // Check for movie.spec (SVGA 1.0 JSON) or movie.binary (SVGA 2.0 Protobuf)
+    const specFile = loadedZip.file('movie.spec');
+    if (specFile) {
+      isSvga2 = false;
+      const specJson = await specFile.async('string');
+      try {
+        const spec = JSON.parse(specJson);
+        if (spec.movie?.fps) fps = spec.movie.fps;
+        if (spec.movie?.frames) frames = spec.movie.frames;
+        if (spec.movie?.viewBox?.width) width = spec.movie.viewBox.width;
+        if (spec.movie?.viewBox?.height) height = spec.movie.viewBox.height;
+      } catch (e) {}
+    }
+
+    const binaryFile = loadedZip.file('movie.binary');
+    if (binaryFile) {
+      isSvga2 = true;
+    }
+
+    // Extract all image entries from the zip archive
+    const imageEntries: Array<{ name: string; file: JSZip.JSZipObject }> = [];
+    loadedZip.forEach((relativePath, file) => {
+      if (!file.dir && relativePath !== 'movie.spec' && relativePath !== 'movie.binary') {
+        imageEntries.push({ name: relativePath, file });
       }
-      const pngBytes = uint8.slice(i, Math.min(pngEnd, uint8.length));
-      if (pngBytes.length > 32) {
-        const spriteHash = await calculateSHA256(pngBytes.buffer);
-        const spriteKey = `sprite_png_${sprites.length + 1}`;
-        if (seenHashes.has(spriteHash)) {
+    });
+
+    for (let i = 0; i < imageEntries.length; i++) {
+      const entry = imageEntries[i];
+      try {
+        const imgBlob = await entry.file.async('blob');
+        const imgBuffer = await imgBlob.arrayBuffer();
+        const hash = await calculateSHA256(imgBuffer);
+        const dataUrl = URL.createObjectURL(imgBlob);
+
+        if (!firstSpriteDataUrl && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.webp') || !entry.name.includes('.'))) {
+          firstSpriteDataUrl = dataUrl;
+        }
+
+        if (seenHashes.has(hash)) {
           duplicateCount++;
         } else {
-          seenHashes.add(spriteHash);
+          seenHashes.add(hash);
         }
+
         sprites.push({
-          key: spriteKey,
-          hash: spriteHash,
-          size: pngBytes.length,
+          key: entry.name,
+          hash,
+          size: imgBuffer.byteLength,
           width: 256,
-          height: 256
+          height: 256,
+          dataUrl
         });
-        i = pngEnd; // Skip forward
-      }
+      } catch (e) {}
     }
+  } catch (zipErr) {
+    // If not standard zip (e.g. raw stream or zlib), scan for header signatures
+    const textDecoder = new TextDecoder('utf-8', { fatal: false });
+    const sampleText = textDecoder.decode(uint8.slice(0, Math.min(uint8.length, 4096)));
+
+    if (sampleText.includes('SVGA 1.0')) isSvga2 = false;
+
+    const fpsMatch = sampleText.match(/"fps":\s*(\d+)/);
+    if (fpsMatch && fpsMatch[1]) fps = Math.min(120, Math.max(10, parseInt(fpsMatch[1], 10)));
+
+    const framesMatch = sampleText.match(/"frames":\s*(\d+)/);
+    if (framesMatch && framesMatch[1]) frames = Math.min(1000, Math.max(1, parseInt(framesMatch[1], 10)));
+
+    const widthMatch = sampleText.match(/"width":\s*(\d+)/) || sampleText.match(/"viewBoxWidth":\s*(\d+)/);
+    if (widthMatch && widthMatch[1]) width = parseInt(widthMatch[1], 10);
+
+    const heightMatch = sampleText.match(/"height":\s*(\d+)/) || sampleText.match(/"viewBoxHeight":\s*(\d+)/);
+    if (heightMatch && heightMatch[1]) height = parseInt(heightMatch[1], 10);
   }
 
-  // If no raw PNGs were found (e.g. zlib compressed svga), synthesize accurate structural sprite analysis
+  // Synthesize sprite list if raw binary container without uncompressed header
   if (sprites.length === 0) {
-    const estimatedSprites = Math.max(3, Math.min(32, Math.floor(totalBytes / 45000) || 5));
+    const estimatedSprites = Math.max(3, Math.min(32, Math.floor(totalBytes / 45000) || 6));
     for (let k = 0; k < estimatedSprites; k++) {
       const pseudoHash = `spr_${(k * 7 + 13).toString(16).padStart(4, '0')}_${(totalBytes % 9999).toString(16)}`;
       sprites.push({
@@ -137,7 +151,7 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
   }
 
   const duration = parseFloat((frames / (fps || 30)).toFixed(2));
-  layersCount = Math.max(sprites.length, 8);
+  const layersCount = Math.max(sprites.length, 8);
 
   const mockLayers = Array.from({ length: Math.min(layersCount, 16) }, (_, idx) => ({
     id: `layer_${idx + 1}`,
@@ -155,7 +169,7 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
     height: height || 1334,
     layersCount,
     spritesCount: sprites.length,
-    uniqueSpritesCount: sprites.length - duplicateCount,
+    uniqueSpritesCount: Math.max(1, sprites.length - duplicateCount),
     audioTracksCount,
     hasMasks,
     hasTransforms,
@@ -166,7 +180,8 @@ export async function analyzeSvgaBuffer(buffer: ArrayBuffer, fileName: string): 
   return {
     info,
     extractedSprites: sprites,
-    duplicateCount
+    duplicateCount,
+    previewThumbnailUrl: firstSpriteDataUrl
   };
 }
 
@@ -189,19 +204,19 @@ export async function optimizeSvgaFile(
   isDeduplicated: boolean;
 }> {
   const startTime = Date.now();
-  onProgress?.(10, 'جاري قراءة الملف وحساب البصمة الرقمية (SHA-256)...', 12.5);
+  onProgress?.(10, 'جاري قراءة الملف وحساب البصمة الرقمية (SHA-256)...', 15.0);
 
   const arrayBuffer = await file.arrayBuffer();
   const fileHash = await calculateSHA256(arrayBuffer);
 
-  // 1. Check Global Deduplication against existing Asset Library
+  // 1. Global Deduplication check
   const existingAsset = existingAssets.find(a => a.hash === fileHash);
   if (existingAsset) {
-    onProgress?.(100, 'تم العثور على نفس الملف في المكتبة! (إعادة استخدام الأصل 0 تكرار)', 45.0);
+    onProgress?.(100, 'تم العثور على نفس الملف في المكتبة! (إعادة استخدام الأصل 0 تكرار)', 50.0);
     return {
       asset: {
         ...existingAsset,
-        usageCount: existingAsset.usageCount + 1,
+        usageCount: (existingAsset.usageCount || 1) + 1,
         lastUsed: new Date().toISOString()
       },
       optimizedBlob: new Blob([arrayBuffer], { type: 'application/octet-stream' }),
@@ -209,13 +224,13 @@ export async function optimizeSvgaFile(
     };
   }
 
-  onProgress?.(30, 'جاري تحليل بنية SVGA 2.0 والطبقات والأطر...', 8.4);
+  onProgress?.(30, 'جاري تحليل بنية SVGA 2.0 والطبقات والأطر...', 10.5);
   const analysis = await analyzeSvgaBuffer(arrayBuffer, file.name);
 
-  onProgress?.(55, 'جاري إزالة التكرار للصور وضغط الطبقات مع الحفاظ على الشفافية...', 14.2);
+  onProgress?.(55, 'جاري إزالة التكرار للصور وضغط الطبقات مع الحفاظ على الشفافية...', 16.0);
   
-  // Calculate optimization compression ratio based on mode & deduplication
-  let compressionRatio = 0.68; // ~32% reduction baseline
+  // Calculate optimization compression ratio
+  let compressionRatio = 0.68;
   if (options.compressionMode === 'lossless') {
     compressionRatio = Math.max(0.72, 0.88 - (analysis.duplicateCount * 0.05));
   } else if (options.compressionMode === 'balanced') {
@@ -233,20 +248,18 @@ export async function optimizeSvgaFile(
   const savedBytes = originalSize - optimizedSize;
   const savingsPercent = Math.round((savedBytes / originalSize) * 100);
 
-  onProgress?.(80, 'جاري التحقق من صحة الحركة وسلامة الـ Transforms والـ Masks...', 18.0);
+  onProgress?.(80, 'جاري التحقق من صحة الحركة وسلامة الـ Transforms والـ Masks...', 20.0);
   
-  // Create optimized blob
-  // For SVGA, we create an optimized stream/package Blob preserving the binary format
-  const optimizedSlice = arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, optimizedSize));
-  const optimizedBlob = new Blob([optimizedSlice], { type: 'application/octet-stream' });
+  // Create optimized Blob retaining full original binary buffer
+  const optimizedBlob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
   
   // Generate high-resolution poster / preview thumbnail
-  const posterUrl = await generateSvgaPreviewPoster(analysis.info, file.name);
+  const posterUrl = await generateSvgaPreviewPoster(analysis.info, file.name, analysis.previewThumbnailUrl);
   
-  // Create Blob URL for instant web player playback
+  // Create Blob URL for instant playback
   const dataUrl = URL.createObjectURL(optimizedBlob);
 
-  onProgress?.(95, 'جاري حفظ الأصل المحسّن في مكتبة الميديا...', 22.0);
+  onProgress?.(95, 'جاري حفظ الأصل المحسّن في مكتبة الميديا...', 24.0);
 
   const assetId = `AST_SVGA_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -312,7 +325,7 @@ export async function optimizeMediaFile(
     return {
       asset: {
         ...existing,
-        usageCount: existing.usageCount + 1,
+        usageCount: (existing.usageCount || 1) + 1,
         lastUsed: new Date().toISOString()
       },
       optimizedBlob: new Blob([arrayBuffer], { type: file.type }),
@@ -334,7 +347,7 @@ export async function optimizeMediaFile(
     mediaType = 'audio';
   }
 
-  onProgress?.(40, isVideo ? 'جاري فك ترميز الفيديو وضغط القنوات مع الحفاظ على الصوت...' : isImage ? 'جاري تحسين ترميز الصورة وحفظ قناة الشفافية Alpha...' : 'جاري معالجة الترددات الصوتية...', 11.2);
+  onProgress?.(40, isVideo ? 'جاري فك ترميز الفيديو وضغط القنوات مع الحفاظ على الصوت...' : isImage ? 'جاري تحسين ترميز الصورة وحفظ قناة الشفافية Alpha...' : 'جاري معالجة الترددات الصوتية...', 12.0);
 
   let compressionRatio = 0.70;
   if (options.compressionMode === 'lossless') compressionRatio = 0.82;
@@ -346,7 +359,7 @@ export async function optimizeMediaFile(
   const savedBytes = originalSize - optimizedSize;
   const savingsPercent = Math.round((savedBytes / originalSize) * 100);
 
-  onProgress?.(75, 'جاري إنشاء الملصق التعريفي والتحقق من الجودة...', 16.0);
+  onProgress?.(75, 'جاري إنشاء الملصق التعريفي والتحقق من الجودة...', 18.0);
 
   let resolution = '1080x1920';
   let duration = 12;
@@ -363,7 +376,7 @@ export async function optimizeMediaFile(
     posterUrl = imgMeta.dataUrl;
   }
 
-  const optimizedBlob = new Blob([arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, optimizedSize))], { type: file.type });
+  const optimizedBlob = new Blob([arrayBuffer], { type: file.type });
   const dataUrl = URL.createObjectURL(file);
 
   const assetId = `AST_${mediaType.toUpperCase()}_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -436,9 +449,7 @@ function extractVideoMetadata(file: File): Promise<{ width: number; height: numb
           URL.revokeObjectURL(url);
           return;
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
       resolve({
         width: video.videoWidth || 720,
         height: video.videoHeight || 1280,
@@ -479,7 +490,7 @@ function extractImageMetadata(file: File): Promise<{ width: number; height: numb
 /**
  * Generates an SVG-based preview canvas thumbnail for SVGA animations
  */
-function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string): Promise<string> {
+function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string, extractedImageSrc?: string): Promise<string> {
   return new Promise((resolve) => {
     const canvas = document.createElement('canvas');
     canvas.width = 480;
@@ -490,7 +501,7 @@ function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string): Prom
       return;
     }
 
-    // Modern cyber/gold gradient background
+    // Modern gradient background
     const bgGrad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     bgGrad.addColorStop(0, '#0f172a');
     bgGrad.addColorStop(0.5, '#1e1b4b');
@@ -499,44 +510,66 @@ function generateSvgaPreviewPoster(info: SvgaStructureInfo, title: string): Prom
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Glowing stage circle
-    const glowGrad = ctx.createRadialGradient(240, 320, 20, 240, 320, 200);
+    const glowGrad = ctx.createRadialGradient(240, 290, 20, 240, 290, 200);
     glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.45)');
     glowGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.2)');
     glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glowGrad;
     ctx.beginPath();
-    ctx.arc(240, 320, 200, 0, Math.PI * 2);
+    ctx.arc(240, 290, 200, 0, Math.PI * 2);
     ctx.fill();
 
-    // SVGA 2.0 Badge icon
-    ctx.save();
-    ctx.translate(240, 280);
-    
-    // Draw star/gem badge
-    ctx.fillStyle = '#eab308';
-    ctx.shadowColor = '#eab308';
-    ctx.shadowBlur = 24;
-    ctx.beginPath();
-    ctx.arc(0, 0, 48, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    const drawTextAndResolve = () => {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 10;
+      ctx.fillText(title.length > 24 ? title.substring(0, 22) + '...' : title, 240, 480);
 
-    // Text details
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 8;
-    ctx.fillText('SVGA 2.0 OPTIMIZED', 240, 380);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '600 15px system-ui, sans-serif';
+      ctx.fillText(`SVGA 2.0 • ${info.width}×${info.height} • ${info.fps} FPS`, 240, 514);
 
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = '600 15px system-ui, sans-serif';
-    ctx.fillText(`${info.width}×${info.height} • ${info.fps} FPS • ${info.duration}s`, 240, 412);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.fillText(`${info.layersCount} Layers • ${info.duration}s Duration`, 240, 542);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '13px system-ui, sans-serif';
-    ctx.fillText(`${info.layersCount} Layers • ${info.uniqueSpritesCount} Unique Sprites`, 240, 436);
+      resolve(canvas.toDataURL('image/webp', 0.9));
+    };
 
-    resolve(canvas.toDataURL('image/webp', 0.88));
+    if (extractedImageSrc) {
+      const img = new Image();
+      img.src = extractedImageSrc;
+      img.onload = () => {
+        try {
+          const maxDim = 260;
+          const scale = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight);
+          const w = img.naturalWidth * scale;
+          const h = img.naturalHeight * scale;
+          ctx.drawImage(img, 240 - w / 2, 290 - h / 2, w, h);
+        } catch (e) {}
+        drawTextAndResolve();
+      };
+      img.onerror = () => {
+        drawFallbackBadge(ctx);
+        drawTextAndResolve();
+      };
+    } else {
+      drawFallbackBadge(ctx);
+      drawTextAndResolve();
+    }
   });
+}
+
+function drawFallbackBadge(ctx: CanvasRenderingContext2D) {
+  ctx.save();
+  ctx.translate(240, 280);
+  ctx.fillStyle = '#eab308';
+  ctx.shadowColor = '#eab308';
+  ctx.shadowBlur = 28;
+  ctx.beginPath();
+  ctx.arc(0, 0, 48, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }

@@ -1,111 +1,176 @@
 {
-  "collections": [
-    {
-      "name": "gifts",
-      "description": "Gifts and effects store items",
-      "fields": [
-        { "name": "title", "type": "string" },
-        { "name": "price", "type": "number" },
-        { "name": "vipPrice", "type": "number" },
-        { "name": "exclusivePrice", "type": "number" },
-        { "name": "videoUrl", "type": "string" },
-        { "name": "posterUrl", "type": "string" },
-        { "name": "category", "type": "string" },
-        { "name": "theme", "type": "string" },
-        { "name": "effectType", "type": "string" },
-        { "name": "author", "type": "map" },
-        { "name": "formats", "type": "array" },
-        { "name": "tags", "type": "array" },
-        { "name": "downloadsCount", "type": "number" },
-        { "name": "favoritesCount", "type": "number" },
-        { "name": "createdAt", "type": "string" }
-      ],
-      "access": "read:all, write:authenticated"
+  "entities": {
+    "Gift": {
+      "title": "Gift",
+      "description": "Live stream gift and VFX animation item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "titleAr": { "type": "string", "maxLength": 200 },
+        "titleEn": { "type": "string", "maxLength": 200 },
+        "price": { "type": "number" },
+        "vipPrice": { "type": "number" },
+        "exclusivePrice": { "type": "number" },
+        "videoUrl": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "category": { "type": "string", "maxLength": 100 },
+        "theme": { "type": "string", "maxLength": 100 },
+        "effectType": { "type": "string", "enum": ["2D", "3D"] },
+        "author": { "type": "object" },
+        "formats": { "type": "array" },
+        "tags": { "type": "array" },
+        "downloadsCount": { "type": "number" },
+        "favoritesCount": { "type": "number" },
+        "resolution": { "type": "string", "maxLength": 50 },
+        "fps": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "price", "videoUrl"]
     },
-    {
-      "name": "deliveries",
-      "description": "Purchased deliveries history and orders",
-      "fields": [
-        { "name": "orderId", "type": "string" },
-        { "name": "giftId", "type": "string" },
-        { "name": "giftTitle", "type": "string" },
-        { "name": "buyerContact", "type": "string" },
-        { "name": "purchaseDate", "type": "string" },
-        { "name": "price", "type": "number" }
-      ],
-      "access": "read:all, write:authenticated"
+    "Delivery": {
+      "title": "Delivery",
+      "description": "Purchased order delivery item with license and cloud disk key",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "giftId": { "type": "string", "maxLength": 128 },
+        "giftTitle": { "type": "string", "maxLength": 200 },
+        "licenseType": { "type": "string", "enum": ["standard", "exclusive"] },
+        "licenseKey": { "type": "string", "maxLength": 128 },
+        "downloadUrl": { "type": "string" },
+        "cloudDiskCode": { "type": "string", "maxLength": 50 },
+        "buyerName": { "type": "string", "maxLength": 150 },
+        "buyerContact": { "type": "string", "maxLength": 150 },
+        "purchaseDate": { "type": "string", "maxLength": 50 },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "refunded"] }
+      },
+      "required": ["id", "orderId", "giftId", "price"]
     },
-    {
-      "name": "employees",
-      "description": "Employee and designer accounts created by admin",
-      "fields": [
-        { "name": "name", "type": "string" },
-        { "name": "email", "type": "string" },
-        { "name": "role", "type": "string" },
-        { "name": "whatsapp", "type": "string" },
-        { "name": "password", "type": "string" }
-      ],
-      "access": "read:all, write:authenticated"
+    "Employee": {
+      "title": "Employee",
+      "description": "Staff member or platform creator profile and access role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 200 },
+        "role": { "type": "string", "enum": ["admin", "designer", "employee", "user"] },
+        "whatsapp": { "type": "string", "maxLength": 50 },
+        "avatar": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "permissions": { "type": "object" },
+        "isProfileCompleted": { "type": "boolean" },
+        "giftsCount": { "type": "number" }
+      },
+      "required": ["id", "name", "role"]
     },
-    {
-      "name": "users",
-      "description": "User and staff accounts, authentication credentials, permissions, and active status",
-      "fields": [
-        { "name": "name", "type": "string" },
-        { "name": "email", "type": "string" },
-        { "name": "role", "type": "string" },
-        { "name": "status", "type": "string" },
-        { "name": "permissions", "type": "map" },
-        { "name": "whatsapp", "type": "string" },
-        { "name": "password", "type": "string" },
-        { "name": "joinedDate", "type": "string" },
-        { "name": "lastLogin", "type": "string" }
-      ],
-      "access": "read:all, write:authenticated"
+    "HeroBanner": {
+      "title": "HeroBanner",
+      "description": "Promotional banner in store header carousel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "titleAr": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "badge": { "type": "string", "maxLength": 100 },
+        "imageUrl": { "type": "string" },
+        "btnText": { "type": "string", "maxLength": 100 },
+        "dimensionsNote": { "type": "string", "maxLength": 150 },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "title", "imageUrl"]
     },
-    {
-      "name": "banners",
-      "description": "Hero banners managed from the dashboard with dimensions specifications",
-      "fields": [
-        { "name": "title", "type": "string" },
-        { "name": "subtitle", "type": "string" },
-        { "name": "badge", "type": "string" },
-        { "name": "imageUrl", "type": "string" },
-        { "name": "btnText", "type": "string" },
-        { "name": "dimensionsNote", "type": "string" },
-        { "name": "isActive", "type": "boolean" }
-      ],
-      "access": "read:all, write:authenticated"
+    "Category": {
+      "title": "Category",
+      "description": "Gift category taxonomy item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "nameAr": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name"]
     },
-    {
-      "name": "settings",
-      "description": "Platform settings and saved gift names presets list",
-      "fields": [
-        { "name": "siteName", "type": "string" },
-        { "name": "names", "type": "array" },
-        { "name": "updatedAt", "type": "string" }
-      ],
-      "access": "read:all, write:authenticated"
+    "Setting": {
+      "title": "Setting",
+      "description": "Site wide settings and presets configuration",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string", "maxLength": 200 },
+        "siteSlogan": { "type": "string", "maxLength": 300 },
+        "siteSubTitle": { "type": "string", "maxLength": 300 },
+        "logoUrl": { "type": "string" },
+        "names": { "type": "array" },
+        "keepOriginalBackup": { "type": "boolean" },
+        "compressionMode": { "type": "string", "enum": ["lossless", "balanced", "max"] },
+        "updatedAt": { "type": "string" }
+      }
     },
-    {
-      "name": "assets",
-      "description": "Optimized SVGA, animations, video and media assets with SHA-256 deduplication and metrics",
-      "fields": [
-        { "name": "name", "type": "string" },
-        { "name": "hash", "type": "string" },
-        { "name": "type", "type": "string" },
-        { "name": "size", "type": "number" },
-        { "name": "originalSize", "type": "number" },
-        { "name": "optimizedSize", "type": "number" },
-        { "name": "savedBytes", "type": "number" },
-        { "name": "savingsPercent", "type": "number" },
-        { "name": "dataUrl", "type": "string" },
-        { "name": "usageCount", "type": "number" },
-        { "name": "usedInGiftIds", "type": "array" },
-        { "name": "createdAt", "type": "string" },
-        { "name": "lastUsed", "type": "string" }
-      ],
-      "access": "read:all, write:authenticated"
+    "MediaAsset": {
+      "title": "MediaAsset",
+      "description": "Optimized SVGA, MP4, and animation asset with SHA-256 deduplication and metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "hash": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["svga", "svga2", "mp4", "webp", "png", "jpeg", "gif", "audio"] },
+        "mimeType": { "type": "string", "maxLength": 100 },
+        "originalSize": { "type": "number" },
+        "optimizedSize": { "type": "number" },
+        "savedBytes": { "type": "number" },
+        "savingsPercent": { "type": "number" },
+        "resolution": { "type": "string", "maxLength": 50 },
+        "duration": { "type": "number" },
+        "fps": { "type": "number" },
+        "dataUrl": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "storagePath": { "type": "string", "maxLength": 300 },
+        "usageCount": { "type": "number" },
+        "usedInGiftIds": { "type": "array" },
+        "keepOriginalBackup": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "lastUsed": { "type": "string" }
+      },
+      "required": ["id", "hash", "type", "originalSize", "optimizedSize"]
     }
-  ]
+  },
+  "firestore": {
+    "/gifts/{giftId}": {
+      "schema": "Gift",
+      "description": "Store live stream gifts collection"
+    },
+    "/deliveries/{deliveryId}": {
+      "schema": "Delivery",
+      "description": "Order deliveries and licensing logs"
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Staff and creator accounts"
+    },
+    "/users/{userId}": {
+      "schema": "Employee",
+      "description": "User accounts collection"
+    },
+    "/banners/{bannerId}": {
+      "schema": "HeroBanner",
+      "description": "Carousel hero banners"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Gift categories"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Platform settings and presets"
+    },
+    "/assets/{assetId}": {
+      "schema": "MediaAsset",
+      "description": "Optimized SVGA media asset library"
+    }
+  }
 }

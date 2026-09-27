@@ -615,6 +615,18 @@ export async function saveAssetToDb(asset: any): Promise<void> {
   }
 }
 
+export async function addBatchGifts(giftsList: GiftItem[]): Promise<number> {
+  try {
+    await ensureFirebaseAuth();
+    const promises = giftsList.map(gift => setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift)));
+    await Promise.all(promises);
+    return giftsList.length;
+  } catch (error) {
+    console.error('Error batch adding gifts:', handleFirestoreError(error));
+    throw error;
+  }
+}
+
 export async function deleteAssetFromDb(assetId: string): Promise<void> {
   try {
     await ensureFirebaseAuth();
@@ -626,6 +638,55 @@ export async function deleteAssetFromDb(assetId: string): Promise<void> {
     const localAssets = JSON.parse(localStorage.getItem('jiawei_assets_v1') || '[]');
     const filtered = localAssets.filter((a: any) => a.id !== assetId);
     localStorage.setItem('jiawei_assets_v1', JSON.stringify(filtered));
+  } catch (e) {}
+}
+
+export async function deleteBatchAssetsFromDb(assetIds: string[]): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const promises = assetIds.map(id => deleteDoc(doc(db, 'assets', id)));
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Error deleting batch assets:', handleFirestoreError(error));
+  }
+  try {
+    const localAssets = JSON.parse(localStorage.getItem('jiawei_assets_v1') || '[]');
+    const idSet = new Set(assetIds);
+    const filtered = localAssets.filter((a: any) => !idSet.has(a.id));
+    localStorage.setItem('jiawei_assets_v1', JSON.stringify(filtered));
+  } catch (e) {}
+}
+
+export async function deleteAllAssetsFromDb(): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const snapshot = await getDocs(collections.assets);
+    const promises: Promise<void>[] = [];
+    snapshot.forEach(docSnap => {
+      promises.push(deleteDoc(doc(db, 'assets', docSnap.id)));
+    });
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Error deleting all assets:', handleFirestoreError(error));
+  }
+  try {
+    localStorage.removeItem('jiawei_assets_v1');
+  } catch (e) {}
+}
+
+export async function updateBatchAssetsCategory(assetIds: string[], category: string): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const promises = assetIds.map(id => updateDoc(doc(db, 'assets', id), { category }));
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Error updating batch asset categories:', handleFirestoreError(error));
+  }
+  try {
+    const localAssets = JSON.parse(localStorage.getItem('jiawei_assets_v1') || '[]');
+    const idSet = new Set(assetIds);
+    const updated = localAssets.map((a: any) => idSet.has(a.id) ? { ...a, category } : a);
+    localStorage.setItem('jiawei_assets_v1', JSON.stringify(updated));
   } catch (e) {}
 }
 
