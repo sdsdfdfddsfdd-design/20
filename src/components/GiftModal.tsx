@@ -42,7 +42,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(14);
   const [streamBg, setStreamBg] = useState<'dark' | 'stage' | 'green'>('dark');
@@ -59,13 +59,21 @@ export const GiftModal: React.FC<GiftModalProps> = ({
     const initialUrl = resolveMediaUrl(gift.videoUrl);
     setVideoSrc(initialUrl);
 
-    // Try to ensure video plays
+    // Try to ensure video plays with audio immediately on click as requested
     const timer = setTimeout(() => {
       if (videoRef.current) {
         videoRef.current.currentTime = 0;
-        videoRef.current.muted = isMuted;
-        videoRef.current.play().catch(() => {
-          setIsPlaying(false);
+        videoRef.current.muted = false;
+        setIsMuted(false);
+        videoRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch((err) => {
+          console.warn('Unmuted autoplay prevented by browser gesture policy, trying muted fallback:', err);
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setIsMuted(true);
+            videoRef.current.play().catch(() => setIsPlaying(false));
+          }
         });
       }
     }, 100);

@@ -146,6 +146,17 @@ export interface SiteSettings {
   siteSlogan?: string;
   siteSubTitle?: string;
   logoUrl?: string; // Custom uploaded site logo (base64 data URL or external URL)
+  primaryPhone?: string; // Primary phone / WhatsApp number displayed on top
+  primaryPhoneLabel?: string; // Label e.g. "WhatsApp", "Customer Service"
+  secondaryPhone?: string; // Additional secondary phone / WhatsApp number
+  secondaryPhoneLabel?: string; // Label e.g. "WhatsApp 2", "Technical Support"
+  whatsapp?: string; // Legacy/fallback alias for primaryPhone
+  secondaryWhatsapp?: string; // Legacy/fallback alias for secondaryPhone
+  phone?: string;
+  email?: string;
+  wechat?: string;
+  wechatQrUrl?: string; // Custom uploaded WeChat QR code / Barcode image
+  deletePasscode?: string; // Security passcode to confirm deleting all products (e.g. 150150)
   updatedAt?: string;
 }
 

@@ -91,18 +91,8 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           : 'border-slate-800/80 hover:border-cyan-500/60 hover:shadow-cyan-950/20'
       }`}
     >
-      {/* 1. Preview Container (Aspect Square / Frame Viewer with Checkerboard or Dark BG) */}
-      <div className="relative aspect-square w-full overflow-hidden bg-[#090b10] flex items-center justify-center p-2">
-        {/* Background checkerboard for transparency simulation */}
-        <div 
-          className="absolute inset-0 opacity-15 pointer-events-none" 
-          style={{
-            backgroundImage: `linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)`,
-            backgroundSize: '16px 16px',
-            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px'
-          }}
-        />
-
+      {/* 1. Preview Container (Aspect Square / Frame Viewer with Clean Solid Dark BG) */}
+      <div className="relative aspect-square w-full overflow-hidden bg-[#07090e] flex items-center justify-center p-2">
         {/* SVGA Live Player */}
         {isSvga && gift.videoUrl ? (
           <div className="w-full h-full flex items-center justify-center">
@@ -111,7 +101,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
               autoPlay={true}
               loop={true}
               isMuted={true}
-              backdrop="checker"
+              backdrop="dark"
               className="w-full h-full object-contain pointer-events-none"
             />
           </div>
@@ -127,12 +117,12 @@ export const GiftCard: React.FC<GiftCardProps> = ({
             onError={handleVideoError}
             className="w-full h-full object-contain pointer-events-none"
           />
-        ) : hasPoster ? (
-          /* Image / Poster Frame */
+        ) : (gift.posterUrl || gift.videoUrl) ? (
+          /* Image / Poster Frame (Natural Colors, Full Opacity) */
           <img
-            src={gift.posterUrl}
+            src={resolveMediaUrl(gift.posterUrl || gift.videoUrl)}
             alt={displayTitle}
-            className="w-full h-full object-contain pointer-events-none transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-full object-contain pointer-events-none transition-transform duration-300 group-hover:scale-105 opacity-100 filter-none"
             loading="lazy"
           />
         ) : (

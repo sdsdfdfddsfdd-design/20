@@ -16,7 +16,7 @@ interface SvgaPlayerProps {
   onLoaded?: (info: { width: number; height: number; fps: number; frames: number; duration: number }) => void;
   onError?: (error: string) => void;
   className?: string;
-  backdrop?: 'checker' | 'dark' | 'livestream' | 'black' | 'white';
+  backdrop?: 'checker' | 'dark' | 'livestream' | 'black' | 'white' | 'none';
 }
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
@@ -43,7 +43,7 @@ export const SvgaPlayer: React.FC<SvgaPlayerProps> = ({
   onLoaded,
   onError,
   className = '',
-  backdrop = 'checker'
+  backdrop = 'dark'
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

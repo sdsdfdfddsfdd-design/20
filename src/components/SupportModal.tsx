@@ -24,12 +24,15 @@ export const SupportModal: React.FC<SupportModalProps> = ({
   if (!isOpen) return null;
 
   // Use configured numbers or reference video defaults
-  const phone = siteSettings?.phone || '+923400700013';
-  const whatsapp = siteSettings?.whatsapp || '+923400700013';
+  const primaryPhone = siteSettings?.primaryPhone || siteSettings?.whatsapp || siteSettings?.phone || '+923400700013';
+  const primaryLabel = siteSettings?.primaryPhoneLabel || 'WhatsApp';
+  const secondaryPhone = siteSettings?.secondaryPhone || siteSettings?.secondaryWhatsapp || '';
+  const secondaryLabel = siteSettings?.secondaryPhoneLabel || (lang === 'ar' ? 'واتساب 2 / الدعم' : 'WhatsApp 2 / Support');
   const email = siteSettings?.email || 'southasia216@gmail.com';
   const wechat = siteSettings?.wechat || 'southasia216';
 
-  const cleanWhatsapp = whatsapp.replace(/[^0-9]/g, '');
+  const cleanPrimary = primaryPhone.replace(/[^0-9]/g, '');
+  const cleanSecondary = secondaryPhone.replace(/[^0-9]/g, '');
 
   return (
     <div 
@@ -56,44 +59,78 @@ export const SupportModal: React.FC<SupportModalProps> = ({
 
         {/* Contact List (Exact Clone of Reference Video) */}
         <div className="space-y-4">
-          {/* 1. Business Phone */}
+          {/* 1. Primary Business Phone & WhatsApp */}
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-              <Phone className="w-4 h-4 text-cyan-400" />
-              <span>{t.businessPhone}</span>
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <span>{primaryLabel} / {t.businessPhone}</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 font-normal">
+                {lang === 'ar' ? 'الرقم الأساسي' : 'Primary'}
+              </span>
             </div>
-            <a 
-              href={`tel:${phone}`}
-              className="block font-mono text-sm text-slate-200 hover:text-cyan-400 transition-colors pl-6"
-              dir="ltr"
-            >
-              {phone}
-            </a>
+            <div className="flex items-center gap-3 pl-6" dir="ltr">
+              <a 
+                href={`https://wa.me/${cleanPrimary}?text=${encodeURIComponent(
+                  lang === 'ar'
+                    ? 'مرحباً، أود الاستفسار عن تصاميم ومؤثرات البث المباشر.'
+                    : 'Hello, I would like to inquire about your live stream designs and animations.'
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-sm text-emerald-400 hover:text-emerald-300 transition-colors hover:underline"
+              >
+                {primaryPhone}
+              </a>
+              <a
+                href={`tel:${primaryPhone}`}
+                className="p-1 rounded bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors"
+                title={lang === 'ar' ? 'اتصال هاتفي' : 'Phone Call'}
+              >
+                <Phone className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
-          {/* 2. WhatsApp */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-              <MessageCircle className="w-4 h-4 text-emerald-400" />
-              <span>{t.whatsapp}</span>
+          {/* 2. Secondary Phone & WhatsApp (If Configured) */}
+          {secondaryPhone && (
+            <div className="space-y-1 pt-1 border-t border-slate-800/60">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-cyan-400" />
+                  <span>{secondaryLabel}</span>
+                </div>
+                <span className="text-[10px] text-cyan-400 font-normal">
+                  {lang === 'ar' ? 'رقم إضافي' : 'Secondary'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 pl-6" dir="ltr">
+                <a 
+                  href={`https://wa.me/${cleanSecondary}?text=${encodeURIComponent(
+                    lang === 'ar'
+                      ? 'مرحباً، أود الاستفسار عن تصاميم ومؤثرات البث المباشر.'
+                      : 'Hello, I would like to inquire about your live stream designs and animations.'
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-sm text-cyan-400 hover:text-cyan-300 transition-colors hover:underline"
+                >
+                  {secondaryPhone}
+                </a>
+                <a
+                  href={`tel:${secondaryPhone}`}
+                  className="p-1 rounded bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors"
+                  title={lang === 'ar' ? 'اتصال هاتفي' : 'Phone Call'}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </a>
+              </div>
             </div>
-            <a 
-              href={`https://wa.me/${cleanWhatsapp}?text=${encodeURIComponent(
-                lang === 'ar'
-                  ? 'مرحباً، أود الاستفسار عن تصاميم ومؤثرات البث المباشر.'
-                  : 'Hello, I would like to inquire about your live stream designs and animations.'
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block font-mono text-sm text-emerald-400 hover:text-emerald-300 transition-colors pl-6"
-              dir="ltr"
-            >
-              {whatsapp}
-            </a>
-          </div>
+          )}
 
           {/* 3. Business Email */}
-          <div className="space-y-1">
+          <div className="space-y-1 pt-1 border-t border-slate-800/60">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Mail className="w-4 h-4 text-blue-400" />
               <span>{t.businessEmail}</span>
@@ -113,58 +150,68 @@ export const SupportModal: React.FC<SupportModalProps> = ({
               {t.scanWechat}
             </div>
 
-            <div className="bg-white rounded-2xl p-4 flex flex-col items-center justify-center max-w-[210px] mx-auto shadow-xl">
-              {/* SVG High-Res QR Code Representation */}
-              <div className="w-36 h-36 relative flex items-center justify-center">
-                <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900 fill-current">
-                  {/* Outer corner 1 */}
-                  <rect x="5" y="5" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
-                  <rect x="12" y="12" width="12" height="12" rx="2" fill="#07c160" />
-                  {/* Outer corner 2 */}
-                  <rect x="69" y="5" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
-                  <rect x="76" y="12" width="12" height="12" rx="2" fill="#07c160" />
-                  {/* Outer corner 3 */}
-                  <rect x="5" y="69" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
-                  <rect x="12" y="76" width="12" height="12" rx="2" fill="#07c160" />
+            <div className="bg-white rounded-2xl p-4 flex flex-col items-center justify-center max-w-[220px] mx-auto shadow-xl">
+              {siteSettings?.wechatQrUrl ? (
+                <div className="w-40 h-40 relative flex items-center justify-center overflow-hidden rounded-xl bg-white p-1">
+                  <img
+                    src={siteSettings.wechatQrUrl}
+                    alt="WeChat QR Code"
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                </div>
+              ) : (
+                /* SVG High-Res QR Code Representation */
+                <div className="w-36 h-36 relative flex items-center justify-center">
+                  <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900 fill-current">
+                    {/* Outer corner 1 */}
+                    <rect x="5" y="5" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
+                    <rect x="12" y="12" width="12" height="12" rx="2" fill="#07c160" />
+                    {/* Outer corner 2 */}
+                    <rect x="69" y="5" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
+                    <rect x="76" y="12" width="12" height="12" rx="2" fill="#07c160" />
+                    {/* Outer corner 3 */}
+                    <rect x="5" y="69" width="26" height="26" rx="4" fill="none" stroke="#07c160" strokeWidth="4" />
+                    <rect x="12" y="76" width="12" height="12" rx="2" fill="#07c160" />
 
-                  {/* QR Matrix Pattern Dots */}
-                  <rect x="36" y="8" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="46" y="8" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="56" y="8" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="36" y="20" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="50" y="20" width="12" height="6" rx="1" fill="#07c160" />
+                    {/* QR Matrix Pattern Dots */}
+                    <rect x="36" y="8" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="46" y="8" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="56" y="8" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="36" y="20" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="50" y="20" width="12" height="6" rx="1" fill="#07c160" />
 
-                  <rect x="8" y="38" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="20" y="38" width="10" height="6" rx="1" fill="#07c160" />
-                  <rect x="36" y="38" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="48" y="38" width="8" height="8" rx="1" fill="#0f172a" />
-                  <rect x="62" y="38" width="6" height="6" rx="1" fill="#07c160" />
-                  <rect x="74" y="38" width="18" height="6" rx="1" fill="#0f172a" />
+                    <rect x="8" y="38" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="20" y="38" width="10" height="6" rx="1" fill="#07c160" />
+                    <rect x="36" y="38" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="48" y="38" width="8" height="8" rx="1" fill="#0f172a" />
+                    <rect x="62" y="38" width="6" height="6" rx="1" fill="#07c160" />
+                    <rect x="74" y="38" width="18" height="6" rx="1" fill="#0f172a" />
 
-                  <rect x="8" y="52" width="14" height="6" rx="1" fill="#07c160" />
-                  <rect x="28" y="52" width="8" height="8" rx="1" fill="#0f172a" />
-                  <rect x="42" y="52" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="54" y="52" width="12" height="6" rx="1" fill="#07c160" />
-                  <rect x="72" y="52" width="8" height="8" rx="1" fill="#0f172a" />
-                  <rect x="86" y="52" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="8" y="52" width="14" height="6" rx="1" fill="#07c160" />
+                    <rect x="28" y="52" width="8" height="8" rx="1" fill="#0f172a" />
+                    <rect x="42" y="52" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="54" y="52" width="12" height="6" rx="1" fill="#07c160" />
+                    <rect x="72" y="52" width="8" height="8" rx="1" fill="#0f172a" />
+                    <rect x="86" y="52" width="6" height="6" rx="1" fill="#0f172a" />
 
-                  <rect x="38" y="68" width="8" height="8" rx="1" fill="#0f172a" />
-                  <rect x="52" y="68" width="8" height="8" rx="1" fill="#07c160" />
-                  <rect x="66" y="68" width="6" height="6" rx="1" fill="#0f172a" />
-                  <rect x="78" y="68" width="14" height="6" rx="1" fill="#0f172a" />
+                    <rect x="38" y="68" width="8" height="8" rx="1" fill="#0f172a" />
+                    <rect x="52" y="68" width="8" height="8" rx="1" fill="#07c160" />
+                    <rect x="66" y="68" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="78" y="68" width="14" height="6" rx="1" fill="#0f172a" />
 
-                  <rect x="38" y="82" width="12" height="6" rx="1" fill="#07c160" />
-                  <rect x="56" y="82" width="8" height="8" rx="1" fill="#0f172a" />
-                  <rect x="70" y="82" width="10" height="6" rx="1" fill="#07c160" />
-                  <rect x="86" y="82" width="6" height="6" rx="1" fill="#0f172a" />
+                    <rect x="38" y="82" width="12" height="6" rx="1" fill="#07c160" />
+                    <rect x="56" y="82" width="8" height="8" rx="1" fill="#0f172a" />
+                    <rect x="70" y="82" width="10" height="6" rx="1" fill="#07c160" />
+                    <rect x="86" y="82" width="6" height="6" rx="1" fill="#0f172a" />
 
-                  {/* Center WeChat Icon */}
-                  <circle cx="50" cy="50" r="10" fill="#ffffff" />
-                  <circle cx="50" cy="50" r="8" fill="#07c160" />
-                  <circle cx="47.5" cy="48" r="1" fill="#ffffff" />
-                  <circle cx="52.5" cy="48" r="1" fill="#ffffff" />
-                </svg>
-              </div>
+                    {/* Center WeChat Icon */}
+                    <circle cx="50" cy="50" r="10" fill="#ffffff" />
+                    <circle cx="50" cy="50" r="8" fill="#07c160" />
+                    <circle cx="47.5" cy="48" r="1" fill="#ffffff" />
+                    <circle cx="52.5" cy="48" r="1" fill="#ffffff" />
+                  </svg>
+                </div>
+              )}
 
               {/* WeChat Text Label */}
               <div className="mt-2 text-xs font-bold text-slate-800 tracking-wide flex items-center gap-1">

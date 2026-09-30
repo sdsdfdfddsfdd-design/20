@@ -20,10 +20,21 @@ export const collections = {
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  siteName: 'Jiawei Effects | جياوي للمؤثرات',
-  siteSlogan: 'LIVE STREAM VFX',
-  siteSubTitle: 'مؤثرات بصرية وهدايا رقمية للبث المباشر',
-  logoUrl: ''
+  siteName: 'Destroy KING Designer',
+  siteSlogan: 'Animation Gallery & Live Stream VFX',
+  siteSubTitle: 'Choose a design and watch it here',
+  logoUrl: '',
+  primaryPhone: '+923400700013',
+  primaryPhoneLabel: 'WhatsApp',
+  secondaryPhone: '',
+  secondaryPhoneLabel: 'WhatsApp 2',
+  whatsapp: '+923400700013',
+  secondaryWhatsapp: '',
+  phone: '+923400700013',
+  email: 'southasia216@gmail.com',
+  wechat: 'southasia216',
+  wechatQrUrl: '',
+  deletePasscode: '150150'
 };
 
 export async function seedDatabase() {
@@ -483,30 +494,60 @@ export async function deleteCategory(id: string) {
   }
 }
 
-// ----------------- SITE SETTINGS (NAME & LOGO) -----------------
+// ----------------- SITE SETTINGS (NAME, LOGO & PHONE NUMBERS) -----------------
 export function subscribeToSiteSettings(callback: (settings: SiteSettings) => void) {
   const settingsDocRef = doc(db, 'settings', 'general');
   return onSnapshot(settingsDocRef, (docSnap) => {
     if (docSnap.exists()) {
-      callback(docSnap.data() as SiteSettings);
+      const data = docSnap.data() as SiteSettings;
+      localStorage.setItem('jiawei_site_settings', JSON.stringify(data));
+      callback(data);
     } else {
+      const cached = localStorage.getItem('jiawei_site_settings');
+      if (cached) {
+        try {
+          callback(JSON.parse(cached));
+          return;
+        } catch (e) {}
+      }
       callback(DEFAULT_SITE_SETTINGS);
     }
   }, (error) => {
     console.error('Error subscribing to site settings:', handleFirestoreError(error));
+    const cached = localStorage.getItem('jiawei_site_settings');
+    if (cached) {
+      try {
+        callback(JSON.parse(cached));
+        return;
+      } catch (e) {}
+    }
     callback(DEFAULT_SITE_SETTINGS);
   });
 }
 
-export async function saveSiteSettings(settings: SiteSettings) {
+export async function saveSiteSettings(settings: SiteSettings): Promise<SiteSettings> {
   try {
     await ensureFirebaseAuth();
     const settingsDocRef = doc(db, 'settings', 'general');
-    await setDoc(settingsDocRef, sanitizeData(settings), { merge: true });
-    // Local storage backup for instantaneous initial paint
-    localStorage.setItem('jiawei_site_settings', JSON.stringify(settings));
+
+    // Normalize and synchronize primary and secondary phone numbers
+    const cleanSettings: SiteSettings = {
+      ...settings,
+      whatsapp: settings.primaryPhone || settings.whatsapp || '+923400700013',
+      primaryPhone: settings.primaryPhone || settings.whatsapp || '+923400700013',
+      secondaryWhatsapp: settings.secondaryPhone || settings.secondaryWhatsapp || '',
+      secondaryPhone: settings.secondaryPhone || settings.secondaryWhatsapp || '',
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(settingsDocRef, sanitizeData(cleanSettings), { merge: true });
+    // Local storage backup for instantaneous initial paint and permanent offline cache
+    localStorage.setItem('jiawei_site_settings', JSON.stringify(cleanSettings));
+    return cleanSettings;
   } catch (error) {
     console.error('Error saving site settings:', handleFirestoreError(error));
+    // Always persist to localStorage even if offline
+    localStorage.setItem('jiawei_site_settings', JSON.stringify(settings));
     throw error;
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { GiftItem, Language, CartItem, DeliveryItem, EmployeeUser, AuthUser, HeroBannerItem } from './types';
+import { GiftItem, Language, CartItem, DeliveryItem, EmployeeUser, AuthUser, HeroBannerItem, SiteSettings } from './types';
 import { INITIAL_GIFTS } from './data/initialGifts';
 import { INITIAL_EMPLOYEES } from './data/initialEmployees';
 import { INITIAL_BANNERS } from './data/initialBanners';
@@ -17,6 +17,7 @@ import { CartDrawer } from './components/CartDrawer';
 import { AuthModal } from './components/AuthModal';
 import { SupportModal } from './components/SupportModal';
 import { VipModal } from './components/VipModal';
+import { SiteSettingsModal } from './components/SiteSettingsModal';
 import { Footer } from './components/Footer';
 import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery } from './lib/firebaseService';
 
@@ -38,9 +39,7 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = subscribeToGifts((newGifts) => {
-      if (newGifts.length > 0) {
-        setGifts(newGifts);
-      }
+      setGifts(newGifts);
     });
     return () => unsubscribe();
   }, []);
@@ -143,7 +142,23 @@ export default function App() {
 
   // Dynamic Categories & Site Settings State
   const [categories, setCategories] = useState<{ id: string; name: string; nameAr?: string; nameEn?: string }[]>([]);
-  const [siteSettings, setSiteSettings] = useState<any>({});
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    const cached = localStorage.getItem('jiawei_site_settings');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return {
+      siteName: 'Destroy KING Designer',
+      primaryPhone: '+923400700013',
+      whatsapp: '+923400700013',
+      primaryPhoneLabel: 'WhatsApp',
+      secondaryPhone: '',
+      secondaryPhoneLabel: 'WhatsApp 2'
+    };
+  });
+  const [isSiteSettingsOpen, setIsSiteSettingsOpen] = useState(false);
 
   useEffect(() => {
     import('./lib/firebaseService').then(({ subscribeToCategories, subscribeToSiteSettings }) => {
@@ -206,9 +221,32 @@ export default function App() {
 
       // Category matching
       if (category !== 'all') {
-        if (category === 'frames' && gift.category !== 'frames') return false;
-        if (category === 'luxury' && gift.category !== 'luxury') return false;
-        if (category !== 'frames' && category !== 'luxury' && gift.category !== category) return false;
+        const giftCat = (gift.category || '').toLowerCase();
+        const selectedCat = category.toLowerCase();
+        
+        if (selectedCat === 'frames') {
+          if (giftCat !== 'frames' && !giftCat.includes('frame') && !gift.title.includes('إطار') && !gift.titleAr?.includes('إطار')) return false;
+        } else if (selectedCat === 'luxury_frame') {
+          if (giftCat !== 'luxury_frame' && !(giftCat.includes('luxury') && giftCat.includes('frame')) && !gift.titleAr?.includes('إطار فاخر')) return false;
+        } else if (selectedCat === 'medals') {
+          if (giftCat !== 'medals' && !giftCat.includes('medal') && !giftCat.includes('badge') && !gift.titleAr?.includes('وسام') && !gift.titleAr?.includes('شارة')) return false;
+        } else if (selectedCat === 'chat_bubbles') {
+          if (giftCat !== 'chat_bubbles' && !giftCat.includes('bubble') && !giftCat.includes('chat') && !gift.titleAr?.includes('فقاع')) return false;
+        } else if (selectedCat === 'luxury') {
+          if (giftCat !== 'luxury' && !giftCat.includes('luxury') && !gift.titleAr?.includes('فاخر')) return false;
+        } else if (selectedCat === 'levels') {
+          if (giftCat !== 'levels' && !giftCat.includes('level') && !gift.titleAr?.includes('مستوى')) return false;
+        } else if (selectedCat === 'banners') {
+          if (giftCat !== 'banners' && !giftCat.includes('banner') && !gift.titleAr?.includes('بانر')) return false;
+        } else if (selectedCat === 'management') {
+          if (giftCat !== 'management' && !giftCat.includes('manage') && !gift.titleAr?.includes('إدارة')) return false;
+        } else if (selectedCat === 'romance') {
+          if (giftCat !== 'romance' && !giftCat.includes('roman') && !gift.titleAr?.includes('رومانسي') && !gift.titleAr?.includes('عشاق')) return false;
+        } else if (selectedCat === 'tech') {
+          if (giftCat !== 'tech' && !giftCat.includes('tech') && !giftCat.includes('sci') && !gift.titleAr?.includes('ميكا')) return false;
+        } else {
+          if (giftCat !== selectedCat) return false;
+        }
       }
 
       return true;
@@ -385,6 +423,7 @@ ID الحساب: ${user.id}` : ''}
         user={user}
         siteSettings={siteSettings}
         onResetFilters={handleResetFilters}
+        onOpenSiteSettings={() => setIsSiteSettingsOpen(true)}
       />
 
       {/* 2. Main Body Content */}
@@ -520,6 +559,8 @@ ID الحساب: ${user.id}` : ''}
               setBanners={setBanners}
               currentUser={user}
               categories={categories}
+              siteSettings={siteSettings}
+              onOpenSiteSettingsModal={() => setIsSiteSettingsOpen(true)}
             />
           )}
         </main>
@@ -615,6 +656,15 @@ ID الحساب: ${user.id}` : ''}
           onSelectDelivery={(del) => setActiveDelivery(del)}
         />
       )}
+
+      {/* MODAL 9: Site Identity & Contact Numbers Modal */}
+      <SiteSettingsModal
+        isOpen={isSiteSettingsOpen}
+        onClose={() => setIsSiteSettingsOpen(false)}
+        lang={lang}
+        siteSettings={siteSettings}
+        onSettingsSaved={(newSettings) => setSiteSettings(newSettings)}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   PlusCircle, 
   Trash2, 
@@ -35,6 +35,7 @@ import {
   UserCheck,
   UserPlus,
   PhoneCall,
+  Phone,
   Shield,
   Briefcase,
   X,
@@ -50,9 +51,10 @@ import {
   BookmarkCheck,
   Bookmark,
   Pin,
-  Tag
+  Tag,
+  Upload
 } from 'lucide-react';
-import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName, MediaAssetItem } from '../types';
+import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName, MediaAssetItem, SiteSettings } from '../types';
 import { translations } from '../utils/translations';
 import { INITIAL_EMPLOYEES } from '../data/initialEmployees';
 import { INITIAL_BANNERS } from '../data/initialBanners';
@@ -87,6 +89,9 @@ import {
   addSavedGiftName,
   deleteSavedGiftName
 } from '../lib/firebaseService';
+import { SiteSettingsModal } from './SiteSettingsModal';
+import { DeleteAllGiftsModal } from './DeleteAllGiftsModal';
+import { SELECTABLE_GIFT_CATEGORIES } from '../data/categories';
 
 interface DashboardProps {
   lang: Language;
@@ -105,6 +110,8 @@ interface DashboardProps {
   setBanners?: React.Dispatch<React.SetStateAction<HeroBannerItem[]>>;
   currentUser?: AuthUser | null;
   categories?: { id: string; name: string }[];
+  siteSettings?: SiteSettings;
+  onOpenSiteSettingsModal?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -123,12 +130,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   banners,
   setBanners,
   currentUser,
-  categories = []
+  categories = [],
+  siteSettings: propSiteSettings,
+  onOpenSiteSettingsModal
 }) => {
   const t = translations[lang];
 
   const [activeTab, setActiveTab] = useState<'create' | 'list' | 'orders' | 'staff' | 'banners' | 'guide' | 'settings' | 'categories' | 'optimizer'>('create');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [isSiteSettingsModalOpen, setIsSiteSettingsModalOpen] = useState(false);
+  const settingsLogoInputRef = useRef<HTMLInputElement>(null);
+  const settingsWechatQrInputRef = useRef<HTMLInputElement>(null);
 
   const bannersList = banners || INITIAL_BANNERS;
 
@@ -397,7 +410,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setPosterLoadError(false);
   }, [posterUrl]);
   const [formatsText, setFormatsText] = useState('SVGA动效文件, MP4带声音透明通道, VAP特效, PAG文件');
-  const [category, setCategory] = useState<GiftItem['category']>('ancient');
+  
+  // Dynamic categories combined with standard store categories (إطارات الأفاتار، الأوسمة، فقاعات الشات، إلخ)
+  const availableCategories = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; nameAr?: string; nameEn?: string; icon?: string }>();
+    SELECTABLE_GIFT_CATEGORIES.forEach(c => map.set(c.id, c));
+    (categories || []).forEach(c => {
+      if (c.id !== 'all' && !map.has(c.id)) {
+        map.set(c.id, {
+          id: c.id,
+          name: c.name,
+          nameAr: (c as any).nameAr || c.name,
+          nameEn: (c as any).nameEn || c.name,
+          icon: '📁'
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [categories]);
+
+  const [category, setCategory] = useState<string>('frames');
   const [theme, setTheme] = useState('国风仙侠');
   const [effectType, setEffectType] = useState<'2D' | '3D'>('3D');
   const [authorName, setAuthorName] = useState(activeStaff?.name || 'سارة المهندس');
@@ -431,37 +463,61 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleVideoFileUpload = async (file: File) => {
     if (!file) return;
     setIsUploadingVideo(true);
-    setVideoUploadStatus(lang === 'ar' ? 'جارِ معالجة ورفع الفيديو إلى السيرفر وحفظه...' : '正在上传并永久保存视频...');
+    const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i);
+    setVideoUploadStatus(
+      lang === 'ar' 
+        ? (isImage ? 'جارِ معالجة ورفع صورة الهدية وحفظها...' : 'جارِ معالجة ورفع الفيديو إلى السيرفر وحفظه...')
+        : '正在上传并永久保存...'
+    );
     setVideoTestError(false);
 
     try {
-      // 1. Extract metadata and thumbnail snapshot
-      const meta = await extractVideoMetadata(file);
-      if (meta.duration) {
-        setVideoDuration(meta.duration);
-      }
-      if (meta.posterUrl && !posterUrl) {
-        setPosterUrl(meta.posterUrl);
-      }
-
-      // 2. Upload file permanently to server /api/upload
-      const safeName = file.name.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      const safeName = (isImage ? 'img_' : 'media_') + `${Date.now()}_` + file.name.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
       const uploadRes = await uploadMediaToServer(file, safeName);
       
-      // 3. Save to IndexedDB for instant local fallback
       const hash = await calculateSHA256(file);
       await saveMediaToIndexedDb(hash, file, safeName);
       await saveMediaToIndexedDb(uploadRes.url, file, safeName);
 
       setVideoUrl(uploadRes.url);
-      setIsTestingVideo(true);
-      setVideoUploadStatus(lang === 'ar' ? 'تم رفع وحفظ الفيديو الدائم بنجاح!' : '视频上传保存成功！');
+
+      if (isImage) {
+        setPosterUrl(uploadRes.url);
+        setUsePosterImage(true);
+        setVideoUploadStatus(lang === 'ar' ? '✓ تم رفع وحفظ صورة الهدية بنجاح!' : '图片上传保存成功！');
+      } else {
+        // Extract metadata for video/svga if applicable
+        try {
+          const meta = await extractVideoMetadata(file);
+          if (meta.duration) {
+            setVideoDuration(meta.duration);
+          }
+          if (meta.posterUrl && !posterUrl) {
+            setPosterUrl(meta.posterUrl);
+          }
+        } catch (mErr) {}
+        setIsTestingVideo(true);
+        setVideoUploadStatus(lang === 'ar' ? '✓ تم رفع وحفظ الفيديو الدائم بنجاح!' : '视频上传保存成功！');
+      }
       setTimeout(() => setVideoUploadStatus(''), 4000);
     } catch (err: any) {
-      console.error('Video upload error:', err);
-      const blobUrl = URL.createObjectURL(file);
-      setVideoUrl(blobUrl);
-      setVideoUploadStatus(lang === 'ar' ? 'تم تجهيز الفيديو محلياً' : '视频已就绪');
+      console.error('File upload error:', err);
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setVideoUrl(reader.result);
+            setPosterUrl(reader.result);
+            setUsePosterImage(true);
+          }
+        };
+        reader.readAsDataURL(file);
+        setVideoUploadStatus(lang === 'ar' ? 'تم تجهيز الصورة بنجاح' : '图片已就绪');
+      } else {
+        const blobUrl = URL.createObjectURL(file);
+        setVideoUrl(blobUrl);
+        setVideoUploadStatus(lang === 'ar' ? 'تم تجهيز الفيديو محلياً' : '视频已就绪');
+      }
       setTimeout(() => setVideoUploadStatus(''), 3000);
     } finally {
       setIsUploadingVideo(false);
@@ -477,11 +533,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await saveMediaToIndexedDb(uploadRes.url, file, safeName);
       setPosterUrl(uploadRes.url);
       setUsePosterImage(true);
+      if (!videoUrl) {
+        setVideoUrl(uploadRes.url);
+      }
     } catch (err) {
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === 'string') {
           setPosterUrl(reader.result);
+          setUsePosterImage(true);
+          if (!videoUrl) {
+            setVideoUrl(reader.result);
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -501,12 +564,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<'wechat' | 'alipay' | 'card' | 'bank' | 'cash'>('card');
   const [orderNotes, setOrderNotes] = useState('');
 
-  // Site Settings State
-  const [siteSettings, setSiteSettings] = useState({
-    siteName: '',
-    siteSlogan: '',
-    logoUrl: ''
+  // Site Settings State (Full support for name, logo, primary & secondary phone)
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    if (propSiteSettings) return propSiteSettings;
+    const cached = localStorage.getItem('jiawei_site_settings');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return {
+      siteName: 'Destroy KING Designer',
+      siteSlogan: '',
+      logoUrl: '',
+      primaryPhone: '+923400700013',
+      primaryPhoneLabel: 'WhatsApp',
+      secondaryPhone: '',
+      secondaryPhoneLabel: 'WhatsApp 2'
+    };
   });
+
+  useEffect(() => {
+    if (propSiteSettings) {
+      setSiteSettings(propSiteSettings);
+    }
+  }, [propSiteSettings]);
 
   useEffect(() => {
     const unsubscribe = subscribeToSiteSettings((settings) => {
@@ -517,9 +599,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveSiteSettings(siteSettings);
-    setSuccessMessage(lang === 'ar' ? 'تم حفظ إعدادات الموقع بنجاح' : 'Settings saved successfully');
-    setTimeout(() => setSuccessMessage(null), 3000);
+    try {
+      const saved = await saveSiteSettings(siteSettings);
+      setSiteSettings(saved);
+      setSuccessMessage(
+        lang === 'ar'
+          ? '✓ تم حفظ وتثبيت لوجو واسم الموقع وأرقام التواصل بشكل دائم في قاعدة البيانات بنجاح!'
+          : '✓ Site settings and phone numbers permanently saved successfully!'
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err) {
+      setSuccessMessage(
+        lang === 'ar'
+          ? 'تم حفظ الإعدادات محلياً بنجاح'
+          : 'Settings saved locally'
+      );
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
   };
 
   // Categories State for UI
@@ -665,10 +761,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
-    if (!videoUrl.trim()) {
-      alert(lang === 'ar' ? 'يرجى إدخال رابط الفيديو الخارجي' : '请输入外链视频URL');
+    const finalMediaUrl = videoUrl.trim() || posterUrl.trim();
+
+    if (!finalMediaUrl) {
+      alert(lang === 'ar' ? 'يرجى إدخال رابط أو رفع ملف للهدية (فيديو أو صورة أو SVGA)' : '请输入外链视频或图片URL');
       return;
     }
+
+    const isImageMedia = Boolean(
+      finalMediaUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+      finalMediaUrl.startsWith('data:image/') ||
+      finalMediaUrl.includes('image')
+    );
+
+    const finalPosterUrl = (usePosterImage && posterUrl.trim()) 
+      ? posterUrl.trim() 
+      : (isImageMedia ? finalMediaUrl : (posterUrl.trim() || ''));
 
     // Check Gift Upload & Publishing Permission (صلاحية رفع ونشر الهدايا)
     const canUploadGifts = (activeStaff?.permissions?.giftUploadAndPublish !== false) && (activeStaff?.status !== 'inactive');
@@ -708,8 +816,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           price: Number(price),
           vipPrice: Number(vipPrice),
           exclusivePrice: Number(exclusivePrice),
-          videoUrl: videoUrl.trim(),
-          posterUrl: usePosterImage ? posterUrl.trim() : '',
+          videoUrl: finalMediaUrl,
+          posterUrl: finalPosterUrl,
           formats: parsedFormats,
           category,
           theme: theme.trim() || '精品',
@@ -732,8 +840,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         price: Number(price),
         vipPrice: Number(vipPrice),
         exclusivePrice: Number(exclusivePrice),
-        videoUrl: videoUrl.trim(),
-        posterUrl: usePosterImage ? posterUrl.trim() : '',
+        videoUrl: finalMediaUrl,
+        posterUrl: finalPosterUrl,
         formats: parsedFormats,
         tags: ['AI原创', theme.trim() || '精选', '礼物', effectType, '新秀'],
         category,
@@ -1234,8 +1342,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
 
-        {/* Quick Stats Grid */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Quick Stats Grid & Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <div className="px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 text-center">
             <div className="text-[10px] text-slate-400 font-medium">{t.totalGiftsCount}</div>
             <div className="text-lg font-black text-cyan-300 font-mono">{gifts.length}</div>
@@ -1244,10 +1352,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="text-[10px] text-slate-400 font-medium">{t.totalSales}</div>
             <div className="text-lg font-black text-emerald-400 font-mono">{deliveries.length}</div>
           </div>
-          <div className="px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 text-center">
-            <div className="text-[10px] text-slate-400 font-medium">{t.activeFormats}</div>
-            <div className="text-lg font-black text-purple-300 font-mono">8+</div>
-          </div>
+
+          {/* Quick Site Identity & Phone Numbers Button */}
+          <button
+            type="button"
+            onClick={() => setIsSiteSettingsModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+            title={lang === 'ar' ? 'تعديل لوجو واسم الموقع وأرقام التواصل' : 'Edit site identity & phone numbers'}
+          >
+            <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+            <span>{lang === 'ar' ? 'هوية الموقع والأرقام' : 'Site & Numbers'}</span>
+          </button>
+
+          {/* Quick Delete All Uploaded Products Button */}
+          <button
+            type="button"
+            disabled={gifts.length === 0}
+            onClick={() => setIsDeleteAllModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-red-950/70 hover:bg-red-900 text-red-300 hover:text-white border border-red-800/80 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-40 disabled:pointer-events-none active:scale-95"
+            title={lang === 'ar' ? 'حذف جميع المنتجات المرفوعة نهائياً' : 'Delete all uploaded products'}
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            <span>{lang === 'ar' ? `حذف جميع المنتجات (${gifts.length})` : `Delete All (${gifts.length})`}</span>
+          </button>
         </div>
       </div>
 
@@ -1818,10 +1945,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     required
                     value={videoUrl}
                     onChange={(e) => {
-                      setVideoUrl(e.target.value);
+                      const val = e.target.value;
+                      setVideoUrl(val);
                       setVideoTestError(false);
+                      if (val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || val.startsWith('data:image/')) {
+                        if (!posterUrl) setPosterUrl(val);
+                        setUsePosterImage(true);
+                      }
                     }}
-                    placeholder="https://... أو /uploads/... أو رابط فيديو"
+                    placeholder="https://... أو رابط فيديو أو صورة مباشرة"
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
                   />
                   <label className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors">
@@ -1830,11 +1962,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     ) : (
                       <UploadCloud className="w-4 h-4 text-cyan-400" />
                     )}
-                    <span>{isUploadingVideo ? (lang === 'ar' ? 'جارِ الرفع...' : '上传中...') : (lang === 'ar' ? 'رفع ملف فيديو' : '上传视频文件')}</span>
+                    <span>{isUploadingVideo ? (lang === 'ar' ? 'جارِ الرفع...' : '上传中...') : (lang === 'ar' ? 'رفع ملف فيديو أو صورة' : '上传视频/图片')}</span>
                     <input
                       type="file"
                       disabled={isUploadingVideo}
-                      accept="video/mp4,video/webm,video/ogg,video/quicktime,.svga,.svga2"
+                      accept="video/mp4,video/webm,video/ogg,video/quicktime,.svga,.svga2,image/*"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -2077,11 +2209,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </label>
                   <select
                     value={category}
-                    onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500 font-semibold"
                   >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>{lang === 'ar' && cat.nameAr ? cat.nameAr : cat.name}</option>
+                    {availableCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon ? `${cat.icon} ` : ''}
+                        {lang === 'ar' && cat.nameAr ? cat.nameAr : cat.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -2517,39 +2652,63 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                 </div>
 
-                <div className="relative aspect-[4/5] w-full max-w-[200px] mx-auto rounded-xl overflow-hidden bg-slate-950 border border-slate-700 shadow-lg flex items-center justify-center">
-                  {usePosterImage && posterUrl && !posterLoadError ? (
-                    <img
-                      src={posterUrl}
-                      alt="Cover Preview"
-                      onError={() => setPosterLoadError(true)}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : videoUrl ? (
-                    <>
-                      <video
-                        key={videoUrl}
-                        src={`${videoUrl}#t=0.001`}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
-                      {posterLoadError && usePosterImage && (
-                        <div className="absolute top-2 left-2 right-2 px-1.5 py-0.5 rounded bg-amber-950/90 text-[9px] text-amber-200 border border-amber-500/50 text-center z-10 shadow-sm">
-                          {lang === 'ar' ? 'تعذر تحميل الصورة - تم عرض الفيديو' : '图片无效，已回退至视频'}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-[11px] p-3 text-center">
-                      <Video className="w-6 h-6 mb-1 opacity-40 text-cyan-400" />
-                      <span>{lang === 'ar' ? 'ضع رابط الفيديو ليأخذ الواجهة هنا' : '输入视频直链'}</span>
-                    </div>
-                  )}
+                <div className="relative aspect-[4/5] w-full max-w-[200px] mx-auto rounded-xl overflow-hidden bg-[#07090e] border border-slate-700 shadow-lg flex items-center justify-center p-2">
+                  {(() => {
+                    const isVideoUrlImage = Boolean(
+                      videoUrl && (
+                        videoUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+                        videoUrl.startsWith('data:image/')
+                      )
+                    );
+                    const imageToDisplay = (usePosterImage && posterUrl && !posterLoadError) ? posterUrl : (isVideoUrlImage ? videoUrl : '');
 
-                  <div className="absolute bottom-2 left-2 right-2 px-2 py-1 rounded bg-slate-950/85 backdrop-blur text-[10px] text-white truncate font-medium text-center border border-slate-800">
+                    if (imageToDisplay) {
+                      return (
+                        <img
+                          src={imageToDisplay}
+                          alt="Cover Preview"
+                          onError={() => setPosterLoadError(true)}
+                          className="w-full h-full object-contain opacity-100 filter-none"
+                        />
+                      );
+                    }
+
+                    if (videoUrl && (videoUrl.includes('.svga') || videoUrl.includes('data:application/octet-stream'))) {
+                      return (
+                        <SvgaPlayer
+                          src={videoUrl}
+                          autoPlay
+                          loop
+                          isMuted
+                          backdrop="dark"
+                          className="w-full h-full object-contain"
+                        />
+                      );
+                    }
+
+                    if (videoUrl) {
+                      return (
+                        <video
+                          key={videoUrl}
+                          src={`${videoUrl}#t=0.001`}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                      );
+                    }
+
+                    return (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-[11px] p-3 text-center">
+                        <Video className="w-6 h-6 mb-1 opacity-40 text-cyan-400" />
+                        <span>{lang === 'ar' ? 'ضع رابط الفيديو أو الصورة' : '输入视频或图片直链'}</span>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="absolute bottom-2 left-2 right-2 px-2 py-1 rounded bg-slate-950/85 backdrop-blur text-[10px] text-white truncate font-medium text-center border border-slate-800 z-10">
                     {title || (lang === 'ar' ? 'اسم الهدية' : '礼物名称')}
                   </div>
                 </div>
@@ -2581,19 +2740,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 disabled={isDeletingAll || gifts.length === 0}
-                onClick={handleDeleteAllGifts}
+                onClick={() => setIsDeleteAllModalOpen(true)}
                 className="px-3.5 py-2 rounded-xl bg-red-950/70 hover:bg-red-900 text-red-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none text-xs font-bold border border-red-800/80 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
                 title={lang === 'ar' ? 'حذف جميع المنتجات المرفوعة نهائياً' : '清空并删除所有已上传产品'}
               >
-                {isDeletingAll ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
-                ) : (
-                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                )}
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
                 <span>
-                  {isDeletingAll
-                    ? (lang === 'ar' ? 'جارِ الحذف...' : '正在删除...')
-                    : (lang === 'ar' ? `حذف جميع المنتجات المرفوعة (${gifts.length})` : `清空所有产品 (${gifts.length})`)}
+                  {lang === 'ar' ? `حذف جميع المنتجات المرفوعة (${gifts.length})` : `清空所有产品 (${gifts.length})`}
                 </span>
               </button>
 
@@ -3959,62 +4112,400 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* TAB 7: SITE SETTINGS */}
       {activeTab === 'settings' && (
-        <div className="bg-[#111520] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5 text-xs text-slate-300">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <SlidersHorizontal className="w-5 h-5 text-amber-400" />
-            <span>{lang === 'ar' ? 'إعدادات الموقع الأساسية' : '网站基础设置'}</span>
-          </h3>
-
-          <form onSubmit={handleSaveSettings} className="space-y-4">
-            <div>
-              <label className="block text-slate-300 font-bold mb-1.5">
-                {lang === 'ar' ? 'اسم الموقع / البراند' : '网站/品牌名称'}
-              </label>
-              <input
-                type="text"
-                value={siteSettings.siteName}
-                onChange={(e) => setSiteSettings({ ...siteSettings, siteName: e.target.value })}
-                placeholder="مثال: جياوي ستور"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-bold mb-1.5">
-                {lang === 'ar' ? 'الوصف / الشعار (Slogan)' : '标语/描述'}
-              </label>
-              <input
-                type="text"
-                value={siteSettings.siteSlogan}
-                onChange={(e) => setSiteSettings({ ...siteSettings, siteSlogan: e.target.value })}
-                placeholder="مثال: منصة هدايا البث المباشر الأولى"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-bold mb-1.5">
-                {lang === 'ar' ? 'رابط لوجو الموقع (URL)' : '网站Logo链接'}
-              </label>
-              <input
-                type="url"
-                value={siteSettings.logoUrl}
-                onChange={(e) => setSiteSettings({ ...siteSettings, logoUrl: e.target.value })}
-                placeholder="https://..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 flex justify-end">
+        <div className="space-y-6">
+          <div className="bg-[#111520] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6 text-xs text-slate-300">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5 text-amber-400" />
+                <span>{lang === 'ar' ? 'إعدادات هوية الموقع والتواصل الأساسية' : 'Site Identity & Contact Settings'}</span>
+              </h3>
               <button
-                type="submit"
-                className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                type="button"
+                onClick={() => setIsSiteSettingsModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/30 text-xs flex items-center gap-1.5"
               >
-                <Check className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'حفظ الإعدادات' : '保存设置'}</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'فتح في نافذة منبثقة' : 'Open in Modal'}</span>
               </button>
             </div>
-          </form>
+
+            <form onSubmit={handleSaveSettings} className="space-y-5">
+              {/* Site Name & Slogan */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-200 font-bold mb-1.5">
+                    {lang === 'ar' ? 'اسم الموقع / البراند' : 'Website Name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.siteName || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, siteName: e.target.value })}
+                    placeholder="Destroy KING Designer"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-sm focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">
+                    {lang === 'ar' ? 'الوصف / الشعار (Slogan)' : 'Tagline / Slogan'}
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.siteSlogan || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, siteSlogan: e.target.value })}
+                    placeholder="Animation Gallery & Live Stream VFX"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Logo Management */}
+              <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <label className="block text-slate-200 font-bold">
+                  {lang === 'ar' ? 'لوجو الموقع (يظهر في أعلى الهيدر)' : 'Website Logo (Top Header)'}
+                </label>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* Current Logo Preview */}
+                  <div className="shrink-0">
+                    {siteSettings.logoUrl ? (
+                      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-amber-400 shadow-md shadow-amber-500/20 bg-slate-950">
+                        <img 
+                          src={siteSettings.logoUrl} 
+                          alt="Logo Preview" 
+                          className="w-full h-full object-cover" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 via-amber-600 to-yellow-600 p-0.5 shadow-md shadow-amber-500/20">
+                        <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center">
+                          <span className="text-2xl">👑</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input 
+                        type="file" 
+                        ref={settingsLogoInputRef} 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            if (ev.target?.result) {
+                              setSiteSettings({ ...siteSettings, logoUrl: ev.target.result as string });
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }} 
+                        accept="image/*" 
+                        className="hidden" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => settingsLogoInputRef.current?.click()}
+                        className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold border border-cyan-500/40 text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>{lang === 'ar' ? 'رفع لوجو من جهازك' : 'Upload Image'}</span>
+                      </button>
+
+                      {siteSettings.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setSiteSettings({ ...siteSettings, logoUrl: '' })}
+                          className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                          <span>{lang === 'ar' ? 'استعادة التاج الافتراضي' : 'Reset to Crown'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={siteSettings.logoUrl || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, logoUrl: e.target.value })}
+                      placeholder={lang === 'ar' ? 'أو ألصق رابط اللوجو المباشر هنا (URL)...' : 'Or paste image URL...'}
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-[11px] focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Primary Phone / WhatsApp Number */}
+              <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-emerald-400 font-bold flex items-center gap-1.5">
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'رقم الهاتف والواتساب الأساسي (الظاهر في الهيدر)' : 'Primary Phone & WhatsApp (In Header)'}</span>
+                  </label>
+                  {(siteSettings.primaryPhone || siteSettings.whatsapp) && (
+                    <a
+                      href={`https://wa.me/${(siteSettings.primaryPhone || siteSettings.whatsapp || '').replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>{lang === 'ar' ? 'تجربة رابط الواتساب' : 'Test WhatsApp'}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={siteSettings.primaryPhone || siteSettings.whatsapp || ''}
+                      onChange={(e) => setSiteSettings({ 
+                        ...siteSettings, 
+                        primaryPhone: e.target.value,
+                        whatsapp: e.target.value 
+                      })}
+                      placeholder="+923400700013"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      dir="ltr"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={siteSettings.primaryPhoneLabel || 'WhatsApp'}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, primaryPhoneLabel: e.target.value })}
+                      placeholder="WhatsApp"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-300 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Secondary Phone / WhatsApp Number */}
+              <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-cyan-400 font-bold flex items-center gap-1.5">
+                    <Phone className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'الرقم الإضافي الثاني (اختياري)' : 'Secondary Contact Number (Optional)'}</span>
+                  </label>
+                  {(siteSettings.secondaryPhone || siteSettings.secondaryWhatsapp) && (
+                    <a
+                      href={`https://wa.me/${(siteSettings.secondaryPhone || siteSettings.secondaryWhatsapp || '').replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>{lang === 'ar' ? 'تجربة الواتساب 2' : 'Test'}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={siteSettings.secondaryPhone || siteSettings.secondaryWhatsapp || ''}
+                      onChange={(e) => setSiteSettings({ 
+                        ...siteSettings, 
+                        secondaryPhone: e.target.value,
+                        secondaryWhatsapp: e.target.value 
+                      })}
+                      placeholder="+966501234567"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-500"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={siteSettings.secondaryPhoneLabel || (lang === 'ar' ? 'واتساب 2' : 'WhatsApp 2')}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, secondaryPhoneLabel: e.target.value })}
+                      placeholder={lang === 'ar' ? 'واتساب 2 / المبيعات' : 'WhatsApp 2'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-300 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* WeChat QR Code & Email & Passcode Section */}
+              <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+                <label className="block text-white font-bold flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-400" />
+                  <span>{lang === 'ar' ? 'صورة الوي شات (WeChat QR) والبريد وكلمة سر الحماية' : 'WeChat QR, Email & Passcode'}</span>
+                </label>
+
+                {/* WeChat QR Upload */}
+                <div className="space-y-2 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-xs font-bold text-slate-200 block">
+                    {lang === 'ar' ? 'صورة باركود / رمز الوي شات (WeChat QR Code):' : 'WeChat QR Image:'}
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <div className="w-16 h-16 rounded-xl bg-white border border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
+                      {siteSettings.wechatQrUrl ? (
+                        <img src={siteSettings.wechatQrUrl} alt="WeChat QR" className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <span className="text-slate-400 text-[9px] text-center">Default QR</span>
+                      )}
+                    </div>
+
+                    <div className="flex-1 space-y-2 w-full">
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="file" 
+                          ref={settingsWechatQrInputRef} 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              if (ev.target?.result) {
+                                setSiteSettings({ ...siteSettings, wechatQrUrl: ev.target.result as string });
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }} 
+                          accept="image/*" 
+                          className="hidden" 
+                        />
+                        <button
+                          type="button"
+                          onClick={() => settingsWechatQrInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold border border-emerald-500/40 text-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{lang === 'ar' ? 'رفع صورة الوي شات' : 'Upload WeChat QR'}</span>
+                        </button>
+
+                        {siteSettings.wechatQrUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSiteSettings({ ...siteSettings, wechatQrUrl: '' })}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-red-950 text-slate-300 hover:text-red-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                            <span>{lang === 'ar' ? 'حذف' : 'Clear'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={siteSettings.wechatQrUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, wechatQrUrl: e.target.value })}
+                        placeholder={lang === 'ar' ? 'أو ألصق رابط صورة الوي شات هنا...' : 'Or paste WeChat QR Image URL...'}
+                        className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-[11px] focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                      {lang === 'ar' ? 'معرف حساب الوي شات (WeChat ID)' : 'WeChat ID'}
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.wechat || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, wechat: e.target.value })}
+                      placeholder="southasia216"
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Email Input */}
+                <div className="space-y-1 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                  <label className="block text-xs font-bold text-slate-200">
+                    {lang === 'ar' ? 'البريد الإلكتروني للدعم والتواصل' : 'Business Support Email'}
+                  </label>
+                  <input
+                    type="email"
+                    value={siteSettings.email || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, email: e.target.value })}
+                    placeholder="southasia216@gmail.com"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    dir="ltr"
+                  />
+                </div>
+
+                {/* Delete Passcode */}
+                <div className="space-y-1 p-3.5 rounded-xl bg-slate-950 border border-red-900/40">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-red-300">
+                      {lang === 'ar' ? 'كلمة سر الحماية لحذف جميع المنتجات (PIN)' : 'Security Passcode for Deleting Products'}
+                    </label>
+                    <span className="text-[10px] text-amber-400 font-mono font-bold">150 150</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={siteSettings.deletePasscode || '150150'}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, deletePasscode: e.target.value })}
+                    placeholder="150150"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-red-800/60 text-white font-mono font-bold text-xs focus:outline-none focus:border-red-400"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    {lang === 'ar' ? 'كلمة السر المطلوبة لتأكيد حذف المنتجات وحماية المتجر من الحذف غير المصرح به.' : 'Security passcode required to confirm product deletion.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  className="px-7 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                >
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>{lang === 'ar' ? 'حفظ وتثبيت الإعدادات بشكل دائم' : 'Save & Lock Permanently'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* DANGER ZONE: DELETE ALL UPLOADED PRODUCTS */}
+          <div className="bg-red-950/20 border border-red-900/60 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-red-300">
+                  {lang === 'ar' ? 'منطقة الخطر - تفريغ المتجر وحذف جميع المنتجات المرفوعة' : 'Danger Zone - Delete All Uploaded Products'}
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  {lang === 'ar' 
+                    ? `يتوفر حالياً (${gifts.length}) هدية ومنتج في المتجر وقاعدة البيانات.` 
+                    : `Currently (${gifts.length}) products in database.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-xs text-red-200/80 max-w-lg">
+                {lang === 'ar'
+                  ? 'سيؤدي هذا الخيار إلى حذف جميع المنتجات المرفوعة نهائياً وتفريغ المتجر بالكامل بنقرة واحدة مع تأكيد الأمان.'
+                  : 'Permanently remove all gifts and wipe the store showcase completely.'}
+              </p>
+
+              <button
+                type="button"
+                disabled={gifts.length === 0}
+                onClick={() => setIsDeleteAllModalOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-600 hover:to-rose-600 text-white font-black text-xs shadow-lg shadow-red-700/30 flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>
+                  {lang === 'ar'
+                    ? `حذف جميع المنتجات المرفوعة (${gifts.length})`
+                    : `Delete All Products (${gifts.length})`}
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4036,6 +4527,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }}
         />
       )}
+
+      {/* Delete All Uploaded Products Modal */}
+      <DeleteAllGiftsModal
+        isOpen={isDeleteAllModalOpen}
+        onClose={() => setIsDeleteAllModalOpen(false)}
+        lang={lang}
+        giftsCount={gifts.length}
+        siteSettings={siteSettings}
+        onGiftsDeleted={(deletedCount) => {
+          setGifts([]);
+          setSuccessMessage(
+            lang === 'ar'
+              ? `✓ تم حذف جميع المنتجات المرفوعة بنجاح (${deletedCount} هدية) وإفراغ المتجر بالكامل!`
+              : `✓ Successfully deleted all ${deletedCount} uploaded products!`
+          );
+          setTimeout(() => setSuccessMessage(null), 5000);
+        }}
+      />
+
+      {/* Site Identity & Phone Numbers Settings Modal */}
+      <SiteSettingsModal
+        isOpen={isSiteSettingsModalOpen}
+        onClose={() => setIsSiteSettingsModalOpen(false)}
+        lang={lang}
+        siteSettings={siteSettings}
+        onSettingsSaved={(newSettings) => {
+          setSiteSettings(newSettings);
+          setSuccessMessage(
+            lang === 'ar'
+              ? '✓ تم حفظ وتثبيت لوجو واسم الموقع وأرقام التواصل بشكل دائم بنجاح!'
+              : '✓ Site identity and phone numbers updated successfully!'
+          );
+          setTimeout(() => setSuccessMessage(null), 4000);
+        }}
+      />
     </div>
   );
 };

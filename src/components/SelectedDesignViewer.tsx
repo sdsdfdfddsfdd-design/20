@@ -35,14 +35,54 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
   const t = translations[lang];
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [videoSrc, setVideoSrc] = useState<string>('');
+  const [backdrop, setBackdrop] = useState<'dark' | 'stage' | 'black' | 'white'>('dark');
 
   useEffect(() => {
     if (gift?.videoUrl) {
       setVideoSrc(resolveMediaUrl(gift.videoUrl));
     }
   }, [gift?.videoUrl]);
+
+  // When selected gift changes, ensure audio is ready and video plays immediately
+  useEffect(() => {
+    if (videoRef.current && videoSrc) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.muted = isMuted;
+      videoRef.current.play().catch(() => {
+        // Fallback for strict browser autoplay policies
+        if (videoRef.current) {
+          videoRef.current.muted = true;
+          videoRef.current.play().catch(() => {});
+        }
+      });
+    }
+  }, [gift?.id, videoSrc, isMuted]);
+
+  const handleToggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    if (videoRef.current) {
+      videoRef.current.muted = nextMuted;
+    }
+  };
+
+  const handleTogglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    } else {
+      setIsPlaying(!isPlaying);
+    }
+  };
 
   if (!gift) return null;
 
@@ -66,6 +106,17 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
     )
   );
 
+  const resolvedPoster = gift.posterUrl ? resolveMediaUrl(gift.posterUrl) : '';
+  const resolvedVideo = gift.videoUrl ? resolveMediaUrl(gift.videoUrl) : '';
+  const isImageFile = Boolean(
+    (gift.videoUrl && (
+      gift.videoUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+      gift.videoUrl.startsWith('data:image/')
+    )) || (!isSvga && !isVideo && (gift.posterUrl || gift.videoUrl))
+  );
+
+  const finalImageSource = resolvedPoster || (isImageFile ? (videoSrc || resolvedVideo) : '');
+
   return (
     <div className="w-full mt-6 mb-8 rounded-3xl bg-[#0f121a] border border-slate-800/90 shadow-2xl p-4 sm:p-6 overflow-hidden">
       {/* Title Header */}
@@ -85,56 +136,89 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
             $ {gift.price} <span className="text-xs text-emerald-300/80 font-bold">USD</span>
           </span>
           <span className="px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700/80 text-xs font-mono text-cyan-300">
-            {gift.formats?.[0]?.name ? gift.formats[0].name.split(' ')[0] : (isSvga ? 'SVGA' : 'MP4')}
+            {gift.formats?.[0]?.name ? gift.formats[0].name.split(' ')[0] : (isSvga ? 'SVGA' : isVideo ? 'MP4' : 'IMAGE')}
           </span>
         </div>
       </div>
 
-      {/* Large Preview Stage with Checkerboard Background (Exact Reference Video Style) */}
-      <div className="relative aspect-square sm:aspect-video max-h-[380px] w-full rounded-2xl overflow-hidden bg-[#090b10] border border-slate-800 flex items-center justify-center p-4">
-        {/* Transparent Checkerboard Pattern */}
-        <div 
-          className="absolute inset-0 opacity-20 pointer-events-none" 
-          style={{
-            backgroundImage: `linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)`,
-            backgroundSize: '20px 20px',
-            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
-          }}
-        />
-
-        {/* Live SVGA / Video Render */}
+      {/* Large Preview Stage with Clean Solid Dark Background (Natural Colors, Zero Checkerboard) */}
+      <div className="relative aspect-square sm:aspect-video max-h-[420px] w-full rounded-2xl overflow-hidden bg-[#07090e] border border-slate-800 flex items-center justify-center p-4 shadow-inner">
+        {/* Live SVGA / Video / Image Render */}
         {isSvga && gift.videoUrl ? (
-          <SvgaPlayer
-            src={videoSrc || gift.videoUrl}
-            autoPlay={isPlaying}
-            loop={true}
-            isMuted={isMuted}
-            backdrop="checker"
-            className="w-full h-full object-contain"
-          />
+          <div className="relative w-full h-full flex items-center justify-center z-10">
+            <SvgaPlayer
+              src={videoSrc || gift.videoUrl}
+              autoPlay={isPlaying}
+              loop={true}
+              isMuted={isMuted}
+              backdrop="dark"
+              className="w-full h-full object-contain"
+            />
+          </div>
         ) : isVideo && videoSrc ? (
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            autoPlay={isPlaying}
-            loop
-            muted={isMuted}
-            playsInline
-            className="w-full h-full object-contain"
-          />
-        ) : gift.posterUrl ? (
-          <img
-            src={gift.posterUrl}
-            alt={displayTitle}
-            className="w-full h-full object-contain"
-          />
-        ) : null}
+          <div className="relative w-full h-full flex items-center justify-center z-10">
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              autoPlay={isPlaying}
+              loop
+              muted={isMuted}
+              playsInline
+              className="w-full h-full object-contain"
+            />
+          </div>
+        ) : finalImageSource ? (
+          <div className="relative w-full h-full flex items-center justify-center z-10">
+            <img
+              src={finalImageSource}
+              alt={displayTitle}
+              className="max-h-full max-w-full object-contain opacity-100 filter-none select-none drop-shadow-2xl"
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs">
+            <Sparkles className="w-8 h-8 text-cyan-400 mb-2 opacity-40 animate-pulse" />
+            <span>{displayTitle}</span>
+          </div>
+        )}
 
-        {/* Top Controls Overlay */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+        {/* Controls Overlay: Audio + Play + Stage + Maximize */}
+        <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+          {/* Audio toggle button with active sound wave indicator */}
+          <button
+            onClick={handleToggleMute}
+            className={`p-2 rounded-xl border backdrop-blur shadow-md transition-all cursor-pointer flex items-center gap-1.5 ${
+              !isMuted 
+                ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-500/70 text-emerald-300 ring-1 ring-emerald-500/30' 
+                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-400'
+            }`}
+            title={!isMuted ? (lang === 'ar' ? 'الصوت مشغّل (اضغط للكتم)' : 'Sound On') : (lang === 'ar' ? 'الصوت مكتوم (اضغط للتشغيل)' : 'Sound Muted')}
+          >
+            {!isMuted ? (
+              <>
+                <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <span className="text-[10px] font-bold text-emerald-300 hidden sm:inline">
+                  {lang === 'ar' ? 'صوت' : 'Audio'}
+                </span>
+              </>
+            ) : (
+              <VolumeX className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+
+          {/* Play/Pause */}
+          <button
+            onClick={handleTogglePlay}
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 backdrop-blur shadow-md transition-colors cursor-pointer"
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 text-cyan-400" />}
+          </button>
+
+          {/* Fullscreen / Details */}
           <button
             onClick={() => onOpenDetails(gift)}
-            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 backdrop-blur shadow-md transition-colors"
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 backdrop-blur shadow-md transition-colors cursor-pointer"
             title="Full Screen / Details"
           >
             <Maximize2 className="w-4 h-4" />
@@ -156,7 +240,7 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
           {/* Buy on WhatsApp */}
           <button
             onClick={() => onBuyWhatsApp(gift)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
           >
             <MessageCircle className="w-4 h-4" />
             <span>{t.buyNowBtn}</span>
@@ -165,7 +249,7 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
           {/* View Details Modal */}
           <button
             onClick={() => onOpenDetails(gift)}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors"
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors cursor-pointer"
           >
             {t.viewDetails}
           </button>
