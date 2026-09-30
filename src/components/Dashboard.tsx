@@ -52,7 +52,9 @@ import {
   Bookmark,
   Pin,
   Tag,
-  Upload
+  Upload,
+  Circle,
+  Square
 } from 'lucide-react';
 import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName, MediaAssetItem, SiteSettings } from '../types';
 import { translations } from '../utils/translations';
@@ -91,6 +93,7 @@ import {
 } from '../lib/firebaseService';
 import { SiteSettingsModal } from './SiteSettingsModal';
 import { DeleteAllGiftsModal } from './DeleteAllGiftsModal';
+import { ImageShapeEditorModal } from './ImageShapeEditorModal';
 import { SELECTABLE_GIFT_CATEGORIES } from '../data/categories';
 
 interface DashboardProps {
@@ -459,6 +462,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [videoUploadStatus, setVideoUploadStatus] = useState<string>('');
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+  
+  // Image Shape & Crop Editor State (شكل دائري، حواف دائرية، شفافية الحواف)
+  const [isShapeEditorOpen, setIsShapeEditorOpen] = useState(false);
+  const [shapeEditorImage, setShapeEditorImage] = useState<string>('');
+  const [monitorAspect, setMonitorAspect] = useState<'9/16' | '1/1' | '4/3'>('1/1');
+  const [monitorBg, setMonitorBg] = useState<'dark' | 'checker' | 'black'>('dark');
+
+  // Auto-play and reset video monitor whenever videoUrl changes
+  useEffect(() => {
+    if (videoUrl) {
+      setIsVideoPlaying(true);
+      setVideoTestError(false);
+      setVideoScrubTime(0);
+      const timer = setTimeout(() => {
+        if (previewVideoRef.current) {
+          previewVideoRef.current.currentTime = 0;
+          previewVideoRef.current.muted = true;
+          previewVideoRef.current.defaultMuted = true;
+          previewVideoRef.current.load();
+          previewVideoRef.current.play().catch(() => {});
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [videoUrl]);
 
   const handleVideoFileUpload = async (file: File) => {
     if (!file) return;
@@ -1096,15 +1124,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
 
       if (capturedDataUrl) {
-        // Automatically populate the Poster Image box and enable it!
+        // Automatically populate the Poster Image box, enable it, and open Shape Editor for custom circular/rounded/feather styling!
         setPosterUrl(capturedDataUrl);
         setUsePosterImage(true);
+        setShapeEditorImage(capturedDataUrl);
+        setIsShapeEditorOpen(true);
         setSuccessMessage(
           lang === 'ar'
-            ? `✓ تم التقاط لقطة الفيديو بنجاح عند (${targetTime.toFixed(1)} ث) وتعيينها كصورة غلاف للهدية في المتجر!`
-            : `✓ Snapshot captured at ${targetTime.toFixed(1)}s and applied as cover image!`
+            ? `✓ تم التقاط لقطة الفيديو بنجاح! يمكنك الآن اختيار الشكل (دائري / حواف دائرية) وضبط شفافية وتلاشي الحواف.`
+            : `✓ Snapshot captured! Customize shape (circle/rounded) and edge feathering now.`
         );
-        setTimeout(() => setSuccessMessage(null), 5000);
+        setTimeout(() => setSuccessMessage(null), 6000);
       } else {
         throw new Error('Frame extraction returned empty');
       }
@@ -2104,49 +2134,68 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
 
                     {posterUrl && (
-                      <div className={`flex items-center gap-3 p-2.5 rounded-xl bg-slate-950/90 border shadow-inner ${
+                      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-950/90 border shadow-inner ${
                         posterLoadError ? 'border-amber-500/50' : 'border-emerald-500/40'
                       }`}>
-                        {!posterLoadError ? (
-                          <img
-                            src={posterUrl}
-                            alt="Cover Thumbnail"
-                            onError={() => setPosterLoadError(true)}
-                            className="w-12 h-14 object-cover rounded-lg border border-emerald-500/60 shrink-0 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-12 h-14 rounded-lg bg-amber-950/60 border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
-                            <ImageIcon className="w-5 h-5 opacity-60" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          {posterLoadError ? (
-                            <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                              {lang === 'ar' ? 'تعذر تحميل رابط الصورة' : '图片链接无法加载'}
-                            </span>
+                        <div className="flex items-center gap-3 min-w-0">
+                          {!posterLoadError ? (
+                            <img
+                              src={posterUrl}
+                              alt="Cover Thumbnail"
+                              onError={() => setPosterLoadError(true)}
+                              className="w-12 h-12 object-contain rounded-lg border border-emerald-500/60 shrink-0 shadow-sm bg-slate-900"
+                            />
                           ) : (
-                            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                              <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-400" />
-                              {lang === 'ar' ? '✓ تم تعيين صورة الغلاف بنجاح وربطها بالمتجر' : '✓ 封面图已成功就绪'}
-                            </span>
+                            <div className="w-12 h-12 rounded-lg bg-amber-950/60 border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
+                              <ImageIcon className="w-5 h-5 opacity-60" />
+                            </div>
                           )}
-                          <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
-                            {posterLoadError
-                              ? (lang === 'ar' ? 'اضغط [أخذ لقطة من الفيديو] أو [رفع صورة] لاستبدالها' : '请点击“从视频截取”或“上传图片”')
-                              : posterUrl.startsWith('data:')
-                              ? (lang === 'ar' ? '📷 لقطة مأخوذة من الفيديو (لقطة نقية)' : '📷 视频截取图像')
-                              : posterUrl}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            {posterLoadError ? (
+                              <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                                {lang === 'ar' ? 'تعذر تحميل رابط الصورة' : '图片链接无法加载'}
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                                <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-400" />
+                                {lang === 'ar' ? '✓ تم تعيين صورة الغلاف بنجاح' : '✓ 封面图已就绪'}
+                              </span>
+                            )}
+                            <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
+                              {posterLoadError
+                                ? (lang === 'ar' ? 'اضغط [أخذ لقطة من الفيديو] أو [رفع صورة] لاستبدالها' : '请点击“从视频截取”或“上传图片”')
+                                : posterUrl.startsWith('data:')
+                                ? (lang === 'ar' ? '📷 صورة/لقطة معالجة ومخصصة' : '📷 视频截取/定制图像')
+                                : posterUrl}
+                            </p>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setPosterUrl('')}
-                          className="text-xs text-red-400 hover:text-red-300 hover:bg-red-950/40 px-2 py-1 rounded-lg border border-transparent hover:border-red-900 transition-colors"
-                          title={lang === 'ar' ? 'حذف الصورة' : '删除'}
-                        >
-                          {lang === 'ar' ? 'حذف' : '移除'}
-                        </button>
+
+                        {/* Shape & Crop Editor Action Button */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShapeEditorImage(posterUrl || videoUrl);
+                              setIsShapeEditorOpen(true);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                            title={lang === 'ar' ? 'قص الصورة بشكل دائري أو حواف دائرية وتطبيق شفافية الحواف' : '圆形裁剪 / 圆角 / 边缘羽化'}
+                          >
+                            <Scissors className="w-3.5 h-3.5 text-purple-400" />
+                            <span>{lang === 'ar' ? '✂️ تشكيل وقص (دائري / حواف)' : 'Crop & Shape'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setPosterUrl('')}
+                            className="text-xs text-red-400 hover:text-red-300 hover:bg-red-950/40 px-2.5 py-1.5 rounded-xl border border-transparent hover:border-red-900 transition-colors"
+                            title={lang === 'ar' ? 'حذف الصورة' : '删除'}
+                          >
+                            {lang === 'ar' ? 'حذف' : '移除'}
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -2362,7 +2411,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Video Preview Column & Live Test Monitor */}
           <div className="lg:col-span-4 space-y-4">
-            <div className="bg-[#111520] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="bg-[#111520] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                   <Play className="w-3.5 h-3.5 text-cyan-400" />
@@ -2375,17 +2424,75 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 )}
               </div>
 
+              {/* Aspect Ratio & Backdrop Selector Controls */}
+              <div className="flex items-center justify-between gap-1.5 mb-3 p-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px]">
+                {/* Aspect Ratio Buttons */}
+                <div className="flex items-center gap-1">
+                  {(['1/1', '9/16', '4/3'] as const).map((asp) => (
+                    <button
+                      key={asp}
+                      type="button"
+                      onClick={() => setMonitorAspect(asp)}
+                      className={`px-2 py-0.5 rounded-lg font-mono font-bold transition-all ${
+                        monitorAspect === asp
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={asp === '1/1' ? 'Square 1:1' : asp === '9/16' ? 'Vertical 9:16' : 'Classic 4:3'}
+                    >
+                      {asp === '1/1' ? (lang === 'ar' ? '1:1 مربع' : '1:1') :
+                       asp === '9/16' ? (lang === 'ar' ? '9:16 عمودي' : '9:16') : '4:3'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Backdrop Buttons */}
+                <div className="flex items-center gap-1">
+                  {(['dark', 'checker', 'black'] as const).map((bg) => (
+                    <button
+                      key={bg}
+                      type="button"
+                      onClick={() => setMonitorBg(bg)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] transition-all ${
+                        monitorBg === bg
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {bg === 'dark' ? (lang === 'ar' ? 'داكن' : 'Dark') :
+                       bg === 'checker' ? (lang === 'ar' ? 'شفاف' : 'Grid') :
+                       (lang === 'ar' ? 'أسود' : 'Black')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Video Monitor Box */}
-              <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl flex items-center justify-center group">
+              <div className={`relative w-full max-w-[290px] mx-auto rounded-2xl overflow-hidden border border-slate-700 shadow-2xl flex items-center justify-center group transition-all duration-300 ${
+                monitorAspect === '1/1' ? 'aspect-square' :
+                monitorAspect === '9/16' ? 'aspect-[9/16]' : 'aspect-[4/3]'
+              } ${
+                monitorBg === 'checker' ? 'bg-[linear-gradient(45deg,#1e2433_25%,transparent_25%),linear-gradient(-45deg,#1e2433_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1e2433_75%),linear-gradient(-45deg,transparent_75%,#1e2433_75%)] bg-[size:16px_16px] bg-[#0c1017]' :
+                monitorBg === 'black' ? 'bg-black' : 'bg-[#080b11]'
+              }`}>
                 {videoUrl ? (
-                  videoUrl.toLowerCase().endsWith('.svga') || videoUrl.toLowerCase().endsWith('.svga2') || videoUrl.includes('data:application/octet-stream') || formatsText.toUpperCase().includes('SVGA') ? (
+                  (
+                    (videoUrl.toLowerCase().endsWith('.svga') ||
+                      videoUrl.toLowerCase().endsWith('.svga2') ||
+                      videoUrl.toLowerCase().includes('.svga?') ||
+                      videoUrl.includes('data:application/octet-stream') ||
+                      videoUrl.includes('gifts/svga')) &&
+                    !videoUrl.toLowerCase().includes('.mp4') &&
+                    !videoUrl.toLowerCase().includes('.webm') &&
+                    !videoUrl.toLowerCase().includes('.mov')
+                  ) ? (
                     <SvgaPlayer
                       key={videoUrl}
                       src={resolveMediaUrl(videoUrl)}
                       autoPlay={isVideoPlaying}
                       loop={true}
                       className="w-full h-full object-contain"
-                      backdrop="checker"
+                      backdrop={monitorBg === 'checker' ? 'checker' : 'dark'}
                       onError={() => setVideoTestError(true)}
                       onLoaded={() => setVideoTestError(false)}
                     />
@@ -2399,6 +2506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         loop
                         muted
                         playsInline
+                        crossOrigin="anonymous"
                         onLoadedData={() => setVideoTestError(false)}
                         onCanPlay={() => {
                           setVideoTestError(false);
@@ -2414,6 +2522,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         onLoadedMetadata={() => {
                           if (previewVideoRef.current) {
                             setVideoDuration(previewVideoRef.current.duration || 14);
+                            if (isVideoPlaying) {
+                              previewVideoRef.current.play().catch(() => {});
+                            }
                           }
                         }}
                         onError={async () => {
@@ -2595,6 +2706,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       >
                         +0.5s
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Quick Timeline Frame Jumpers */}
+                  <div className="flex items-center justify-between gap-1 pt-1">
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {lang === 'ar' ? 'القفز السريع للقطات:' : '快速跳帧:'}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {[
+                        { label: '0%', ratio: 0 },
+                        { label: '25%', ratio: 0.25 },
+                        { label: '50%', ratio: 0.5 },
+                        { label: '75%', ratio: 0.75 },
+                        { label: '90%', ratio: 0.9 }
+                      ].map((pos) => (
+                        <button
+                          key={pos.label}
+                          type="button"
+                          onClick={() => {
+                            if (!previewVideoRef.current) return;
+                            const target = (videoDuration || 10) * pos.ratio;
+                            previewVideoRef.current.currentTime = target;
+                            setVideoScrubTime(target);
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 hover:text-cyan-300 text-slate-400 text-[10px] font-mono border border-slate-700/60 transition-colors"
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -4560,6 +4701,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
               : '✓ Site identity and phone numbers updated successfully!'
           );
           setTimeout(() => setSuccessMessage(null), 4000);
+        }}
+      />
+
+      {/* Image Shape, Circular Crop & Edge Feather Editor Modal */}
+      <ImageShapeEditorModal
+        isOpen={isShapeEditorOpen}
+        onClose={() => setIsShapeEditorOpen(false)}
+        imageUrl={shapeEditorImage}
+        lang={lang}
+        onApply={(processedDataUrl) => {
+          setPosterUrl(processedDataUrl);
+          setUsePosterImage(true);
+          setSuccessMessage(
+            lang === 'ar'
+              ? '✓ تم تطبيق وقص الصورة بالشكل المطلوب (دائري / حواف ناعمة) وتعيينها كغلاف بنجاح!'
+              : '✓ Image cropped, shaped and applied successfully!'
+          );
+          setTimeout(() => setSuccessMessage(null), 5000);
         }}
       />
     </div>

@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
+import { Readable } from 'stream';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -131,7 +132,7 @@ app.get('/uploads/:filename', (req: Request, res: Response) => {
   }
 });
 
-// Proxy Media Endpoint (for external CDN videos like top4top.io that block CORS or need page scraping)
+// Proxy Media Endpoint (for external CDN videos & images that block CORS or need page scraping)
 app.get('/api/proxy-media', async (req: Request, res: Response) => {
   try {
     let targetUrl = req.query.url as string;
@@ -141,7 +142,7 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
 
     const upstreamHeaders: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
+      'Accept': 'image/*,video/*,*/*;q=0.8',
     };
 
     if (req.headers.range) {
@@ -154,13 +155,11 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       upstreamHeaders['Origin'] = 'https://top4top.io';
 
       const isDirectFile = /\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)($|\?)/i.test(targetUrl);
-      // If user pasted a Top4Top download page link (e.g. top4top.io/downloadf-xxx.html or top4top.io/index.php), extract direct file URL
-      if (!isDirectFile || targetUrl.includes('/downloadf-') || targetUrl.includes('/index.php')) {
+      if (!isDirectFile || targetUrl.includes('/downloadf-') || targetUrl.includes('/index.php') || targetUrl.includes('/p_')) {
         try {
           const pageRes = await fetch(targetUrl, { headers: upstreamHeaders });
           if (pageRes.ok) {
             const html = await pageRes.text();
-            // Match direct media URLs on top4top servers (a.top4top.io, b.top4top.io, etc.)
             const matches = html.match(/https?:\/\/[a-z0-9]+\.top4top\.io\/[^\s"'<>]+?\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)/gi);
             if (matches && matches.length > 0) {
               targetUrl = matches[0];
@@ -172,9 +171,40 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       }
     }
 
-    const upstream = await fetch(targetUrl, {
+    // ImgBB / PostImg / generic image page scraping
+    if (
+      (targetUrl.includes('ibb.co') || targetUrl.includes('postimg.cc')) &&
+      !/\.(png|jpg|jpeg|gif|webp)($|\?)/i.test(targetUrl)
+    ) {
+      try {
+        const pageRes = await fetch(targetUrl, { headers: upstreamHeaders });
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const ogMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
+                          html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i) ||
+                          html.match(/https?:\/\/[a-z0-9\.\-]+\/images\/[^\s"'<>]+?\.(png|jpg|jpeg|webp)/i);
+          if (ogMatch && ogMatch[1]) {
+            targetUrl = ogMatch[1];
+          }
+        }
+      } catch (err) {
+        console.warn('Could not scrape image page:', err);
+      }
+    }
+
+    let upstream = await fetch(targetUrl, {
       headers: upstreamHeaders,
     });
+
+    // If 403 hotlink protection triggered, retry with neutral headers
+    if (upstream.status === 403 || upstream.status === 401) {
+      upstream = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': '*/*'
+        }
+      });
+    }
 
     if (!upstream.ok && upstream.status !== 206) {
       return res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
@@ -187,13 +217,16 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       else if (/\.webm($|\?)/i.test(targetUrl)) contentType = 'video/webm';
       else if (/\.(jpg|jpeg)($|\?)/i.test(targetUrl)) contentType = 'image/jpeg';
       else if (/\.png($|\?)/i.test(targetUrl)) contentType = 'image/png';
-      else contentType = 'video/mp4';
+      else if (/\.webp($|\?)/i.test(targetUrl)) contentType = 'image/webp';
+      else if (/\.gif($|\?)/i.test(targetUrl)) contentType = 'image/gif';
+      else contentType = 'image/png';
     }
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
 
     if (upstream.headers.get('content-range')) {
       res.setHeader('Content-Range', upstream.headers.get('content-range')!);
@@ -203,10 +236,17 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       res.setHeader('Content-Length', upstream.headers.get('content-length')!);
     }
 
-    const arrayBuffer = await upstream.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
+    if (upstream.body && typeof (Readable as any).fromWeb === 'function') {
+      const nodeStream = (Readable as any).fromWeb(upstream.body);
+      nodeStream.pipe(res);
+    } else {
+      const arrayBuffer = await upstream.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    }
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Proxy request failed' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message || 'Proxy request failed' });
+    }
   }
 });
 

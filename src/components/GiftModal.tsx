@@ -42,7 +42,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(14);
   const [streamBg, setStreamBg] = useState<'dark' | 'stage' | 'green'>('dark');
@@ -55,11 +55,11 @@ export const GiftModal: React.FC<GiftModalProps> = ({
 
     setHasVideoError(false);
     setCurrentTime(0);
+    setIsMuted(false);
 
     const initialUrl = resolveMediaUrl(gift.videoUrl);
     setVideoSrc(initialUrl);
 
-    // Try to ensure video plays with audio immediately on click as requested
     const timer = setTimeout(() => {
       if (videoRef.current) {
         videoRef.current.currentTime = 0;
@@ -68,11 +68,11 @@ export const GiftModal: React.FC<GiftModalProps> = ({
         videoRef.current.play().then(() => {
           setIsPlaying(true);
         }).catch((err) => {
-          console.warn('Unmuted autoplay prevented by browser gesture policy, trying muted fallback:', err);
+          console.warn('Unmuted autoplay prevented by browser gesture policy, falling back to muted autoplay:', err);
           if (videoRef.current) {
             videoRef.current.muted = true;
             setIsMuted(true);
-            videoRef.current.play().catch(() => setIsPlaying(false));
+            videoRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
           }
         });
       }
@@ -123,6 +123,13 @@ export const GiftModal: React.FC<GiftModalProps> = ({
       gift.videoUrl.includes('data:application/octet-stream') ||
       gift.videoUrl.includes('gifts/svga')
     ) && !gift.videoUrl.toLowerCase().includes('.mp4') && !gift.videoUrl.toLowerCase().includes('.webm')
+  );
+
+  const isImage = Boolean(
+    !gift.videoUrl || (
+      gift.videoUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+      gift.videoUrl.startsWith('data:image/')
+    )
   );
 
   const displayTitle = lang === 'ar' && gift.titleAr ? gift.titleAr : lang === 'en' && gift.titleEn ? gift.titleEn : gift.title;
@@ -289,22 +296,40 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                   backdrop={streamBg === 'stage' ? 'dark' : streamBg === 'dark' ? 'black' : 'checker'}
                   className="w-full h-full object-contain"
                 />
+              ) : isImage ? (
+                <div className="relative w-full h-full flex items-center justify-center p-3">
+                  <img
+                    src={resolveMediaUrl(gift.posterUrl || gift.videoUrl)}
+                    alt={displayTitle}
+                    className="max-h-full max-w-full object-contain select-none drop-shadow-2xl"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const raw = gift.posterUrl || gift.videoUrl || '';
+                      if (raw.startsWith('http') && !target.src.includes('/api/proxy-media')) {
+                        target.src = `/api/proxy-media?url=${encodeURIComponent(raw)}`;
+                      }
+                    }}
+                  />
+                </div>
               ) : (
                 <>
                   <video
                     ref={videoRef}
                     key={videoSrc || gift.videoUrl}
                     src={videoSrc || gift.videoUrl}
-                    poster={gift.posterUrl}
                     loop
                     autoPlay={isPlaying}
                     muted={isMuted}
                     playsInline
+                    crossOrigin="anonymous"
                     preload="auto"
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={() => {
                       if (videoRef.current && videoRef.current.duration) {
                         setDuration(videoRef.current.duration);
+                      }
+                      if (isPlaying && videoRef.current) {
+                        videoRef.current.play().catch(() => {});
                       }
                     }}
                     onCanPlay={() => {
@@ -321,7 +346,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                     <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-20">
                       {gift.posterUrl ? (
                         <img 
-                          src={gift.posterUrl} 
+                          src={resolveMediaUrl(gift.posterUrl)} 
                           alt={displayTitle} 
                           className="w-24 h-24 object-cover rounded-xl border border-slate-700 mb-3 shadow-lg"
                         />

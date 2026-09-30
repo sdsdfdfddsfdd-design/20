@@ -115,25 +115,58 @@ export async function uploadMediaToServer(
 
 /**
  * Resolves a media URL to an absolute or playable stream URL
+ * Supports local uploads, Google Drive, Dropbox, Top4top, and general web videos & images
  */
 export function resolveMediaUrl(url?: string, useProxy = false): string {
   if (!url) return '';
-  if (url.startsWith('/uploads/') || url.startsWith('blob:') || url.startsWith('data:')) {
-    return url;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+    return trimmed;
   }
-  // Automatically proxy top4top.io URLs to extract direct file and bypass hotlink protection/CORS
-  if (url.includes('top4top.io') || useProxy) {
-    return `/api/proxy-media?url=${encodeURIComponent(url)}`;
+
+  // Handle Google Drive view links -> convert to direct thumbnail/image links
+  const gdriveMatch = trimmed.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch && gdriveMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${gdriveMatch[1]}`;
   }
-  return url;
+
+  // Handle Dropbox share links -> convert to direct raw links
+  if (trimmed.includes('dropbox.com')) {
+    return trimmed.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace(/\?dl=[01]/, '');
+  }
+
+  // Automatically proxy top4top (all TLDs/subdomains), imgbb, postimg, streamable, and external MP4/video URLs when needed
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (
+      useProxy ||
+      trimmed.includes('top4top.') ||
+      trimmed.includes('ibb.co') ||
+      trimmed.includes('postimg.cc') ||
+      trimmed.includes('streamable.com') ||
+      trimmed.includes('catbox.moe') ||
+      trimmed.includes('gofile.io') ||
+      trimmed.includes('discordapp.com') ||
+      trimmed.includes('vimeo.com') ||
+      trimmed.includes('bunnycdn.com') ||
+      trimmed.includes('r2.cloudflarestorage.com') ||
+      trimmed.includes('cloudinary.com') ||
+      trimmed.toLowerCase().includes('.mp4') ||
+      trimmed.toLowerCase().includes('.webm') ||
+      trimmed.toLowerCase().includes('.mov')
+    ) {
+      return `/api/proxy-media?url=${encodeURIComponent(trimmed)}`;
+    }
+  }
+
+  return trimmed;
 }
 
 /**
- * Gets a proxy streaming URL for an external media resource to bypass CORS
+ * Gets a proxy streaming URL for an external media resource to bypass CORS and allow canvas frame capturing
  */
 export function getProxyMediaUrl(url: string): string {
   if (!url || url.startsWith('/uploads/') || url.startsWith('blob:') || url.startsWith('data:')) {
     return url;
   }
-  return `/api/proxy-media?url=${encodeURIComponent(url)}`;
+  return `/api/proxy-media?url=${encodeURIComponent(url.trim())}`;
 }

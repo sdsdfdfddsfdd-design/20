@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Video, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Play, Video, Volume2, Sparkles, ArrowRight, ArrowLeft } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
@@ -44,6 +44,13 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     )
   );
 
+  const hasAudio = Boolean(
+    gift.formats?.some(f => f.name.includes('声音') || f.name.includes('Sound') || f.name.includes('صوت')) ||
+    gift.videoUrl ||
+    gift.tags?.some(tag => tag.includes('صوت') || tag.includes('音效') || tag.includes('Audio')) ||
+    true // Most live streaming gifts have sound effects
+  );
+
   useEffect(() => {
     if (gift.videoUrl) {
       setVideoSrc(resolveMediaUrl(gift.videoUrl));
@@ -78,23 +85,102 @@ export const GiftCard: React.FC<GiftCardProps> = ({
   };
 
   const displayTitle = lang === 'ar' && gift.titleAr ? gift.titleAr : lang === 'en' && gift.titleEn ? gift.titleEn : gift.title;
-  const formatName = gift.formats?.[0]?.name ? gift.formats[0].name.split(' ')[0].split('带')[0] : (isSvga ? 'SVGA' : isVideo ? 'MP4' : 'VFX');
+  const authorName = gift.author?.name || (lang === 'ar' ? 'استوديو الإبداع' : '幻星空间');
+  const authorAvatar = gift.author?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&auto=format&fit=crop&q=80';
+  const durationSec = gift.duration || 7;
+  const serialNo = gift.id.startsWith('NO.') ? gift.id : `NO.${gift.id.replace(/\D/g, '') || '273806'}`;
+
+  // Tag translations
+  const overseasTag = lang === 'ar' ? 'حصري' : lang === 'en' ? 'Global' : '海外';
+  const categoryTag = gift.category === 'frames' 
+    ? (lang === 'ar' ? 'إطار' : lang === 'en' ? 'Frame' : '头像框')
+    : gift.category === 'luxury'
+    ? (lang === 'ar' ? 'فاخر' : lang === 'en' ? 'Luxury' : '豪华')
+    : (lang === 'ar' ? 'هدية' : lang === 'en' ? 'Gift' : '座驾');
+  const effectTag = gift.effectType || (isSvga ? 'SVGA' : '2D');
 
   return (
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleMouseEnter}
+      onTouchEnd={handleMouseLeave}
       onClick={() => onSelectGift(gift)}
-      className={`group relative flex flex-col rounded-2xl bg-[#0e121a] border transition-all duration-300 overflow-hidden cursor-pointer shadow-md ${
+      className={`group relative flex flex-col rounded-2xl bg-[#0c1017] border transition-all duration-300 overflow-hidden cursor-pointer shadow-lg hover:shadow-cyan-950/40 ${
         isSelected 
-          ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-amber-400/20 shadow-lg' 
-          : 'border-slate-800/80 hover:border-cyan-500/60 hover:shadow-cyan-950/20'
+          ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20 shadow-xl' 
+          : 'border-slate-800/90 hover:border-cyan-500/70'
       }`}
     >
-      {/* 1. Preview Container (Aspect Square / Frame Viewer with Clean Solid Dark BG) */}
-      <div className="relative aspect-square w-full overflow-hidden bg-[#07090e] flex items-center justify-center p-2">
-        {/* SVGA Live Player */}
-        {isSvga && gift.videoUrl ? (
+      {/* 1. Preview Container with Badges */}
+      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[#0a0d14] to-[#06080d] flex items-center justify-center p-3">
+        {/* Top-Left: Red NEW ribbon badge (exact match to D.png) */}
+        <div className="absolute top-0 left-0 z-20">
+          <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-[9px] px-2 py-0.5 rounded-br-lg shadow-md tracking-wider flex items-center gap-0.5">
+            <span>NEW</span>
+          </div>
+        </div>
+
+        {/* Top-Right: Sound Effect badge (音效 / صوت) */}
+        {hasAudio && (
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-500/30 text-cyan-300 text-[10px] font-semibold shadow-sm">
+            <Volume2 className="w-3 h-3 text-cyan-400 animate-pulse" />
+            <span>{lang === 'ar' ? 'صوت' : lang === 'en' ? 'Sound' : '音效'}</span>
+          </div>
+        )}
+
+        {/* Media Preview:
+            - At rest: Show posterUrl (clean customized cover image)
+            - On Hover/Touch: If videoUrl exists, play video/animation immediately on hover!
+        */}
+        {hasPoster ? (
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* Background Playable Video / SVGA on Hover */}
+            {(isVideo || isSvga || gift.videoUrl) && (
+              <div className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${isHovered ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'}`}>
+                {isSvga ? (
+                  <SvgaPlayer
+                    src={videoSrc || gift.videoUrl}
+                    autoPlay={isHovered}
+                    loop={true}
+                    isMuted={true}
+                    backdrop="dark"
+                    className="w-full h-full object-contain pointer-events-none drop-shadow-2xl"
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={videoSrc || resolveMediaUrl(gift.videoUrl)}
+                    autoPlay={isHovered}
+                    loop
+                    muted
+                    playsInline
+                    crossOrigin="anonymous"
+                    onError={handleVideoError}
+                    className="w-full h-full object-contain pointer-events-none drop-shadow-2xl"
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Front Poster Image (Visible when not hovered) */}
+            <img
+              src={resolveMediaUrl(gift.posterUrl)}
+              alt={displayTitle}
+              className={`w-full h-full object-contain pointer-events-none transition-all duration-300 drop-shadow-2xl ${
+                isHovered && (isVideo || isSvga || gift.videoUrl) ? 'opacity-0 scale-105' : 'opacity-100 group-hover:scale-105'
+              }`}
+              loading="lazy"
+              onError={(e) => {
+                const target = e.currentTarget;
+                const raw = gift.posterUrl || '';
+                if (raw.startsWith('http') && !target.src.includes('/api/proxy-media')) {
+                  target.src = `/api/proxy-media?url=${encodeURIComponent(raw)}`;
+                }
+              }}
+            />
+          </div>
+        ) : isSvga && gift.videoUrl ? (
           <div className="w-full h-full flex items-center justify-center">
             <SvgaPlayer
               src={videoSrc || gift.videoUrl}
@@ -102,11 +188,10 @@ export const GiftCard: React.FC<GiftCardProps> = ({
               loop={true}
               isMuted={true}
               backdrop="dark"
-              className="w-full h-full object-contain pointer-events-none"
+              className="w-full h-full object-contain pointer-events-none drop-shadow-2xl"
             />
           </div>
-        ) : isVideo && videoSrc ? (
-          /* Video MP4 / WebM Player */
+        ) : (isVideo || gift.videoUrl) && videoSrc && !gift.videoUrl?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ? (
           <video
             ref={videoRef}
             src={videoSrc}
@@ -114,60 +199,80 @@ export const GiftCard: React.FC<GiftCardProps> = ({
             loop
             muted
             playsInline
+            crossOrigin="anonymous"
             onError={handleVideoError}
-            className="w-full h-full object-contain pointer-events-none"
+            className="w-full h-full object-contain pointer-events-none drop-shadow-2xl"
           />
-        ) : (gift.posterUrl || gift.videoUrl) ? (
-          /* Image / Poster Frame (Natural Colors, Full Opacity) */
+        ) : gift.videoUrl ? (
           <img
-            src={resolveMediaUrl(gift.posterUrl || gift.videoUrl)}
+            src={resolveMediaUrl(gift.videoUrl)}
             alt={displayTitle}
-            className="w-full h-full object-contain pointer-events-none transition-transform duration-300 group-hover:scale-105 opacity-100 filter-none"
+            className="w-full h-full object-contain pointer-events-none transition-transform duration-500 group-hover:scale-105 opacity-100 filter-none drop-shadow-2xl"
             loading="lazy"
+            onError={(e) => {
+              const target = e.currentTarget;
+              const originalSrc = gift.videoUrl || '';
+              if (originalSrc.startsWith('http') && !target.src.includes('/api/proxy-media')) {
+                target.src = `/api/proxy-media?url=${encodeURIComponent(originalSrc)}`;
+              }
+            }}
           />
         ) : (
-          /* Fallback visual */
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
             <Video className="w-8 h-8 opacity-40 mb-1" />
-            <span className="text-[10px] font-mono">{formatName}</span>
+            <span className="text-[10px] font-mono">{effectTag}</span>
           </div>
         )}
       </div>
 
-      {/* 2. Content Info Section (Exact match to reference video) */}
-      <div className="p-3 flex flex-col gap-1.5 bg-[#0e121a]">
-        {/* Watch Animation Link */}
-        <div className="flex items-center gap-1 text-cyan-400 group-hover:text-cyan-300 font-semibold text-xs transition-colors">
-          <span>{t.watchAnimation}</span>
-          {lang === 'ar' ? (
-            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
-          ) : (
-            <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
-          )}
-        </div>
-
-        {/* Title and Price Row */}
-        <div className="flex items-start justify-between gap-1.5 pt-0.5">
-          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-200 transition-colors line-clamp-1 leading-snug">
+      {/* 2. Content Info Section (Matching Reference D.png) */}
+      <div className="p-3 pt-2.5 flex flex-col gap-1.5 bg-[#0c1017]">
+        {/* Title & Price Row */}
+        <div className="flex items-start justify-between gap-1.5">
+          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-1 leading-snug">
             {displayTitle}
           </h3>
           <span className="text-emerald-400 font-extrabold text-xs sm:text-sm whitespace-nowrap shrink-0">
-            $ {gift.price} <span className="text-[10px] text-emerald-300/80 font-semibold">USD</span>
+            ¥ {gift.price} <span className="text-[10px] text-emerald-300/80 font-semibold">CNY</span>
           </span>
         </div>
 
-        {/* Format Badge (e.g. SVGA / MP4 / VAP) */}
-        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-0.5">
-          <span className="text-slate-400 tracking-wider font-semibold">
-            {formatName}
+        {/* Tags Row: [海外/حصري] [座驾/هدية] [2D/3D] */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-950/70 text-pink-300 border border-pink-500/30 shadow-xs">
+            {overseasTag}
           </span>
-          {gift.category && (
-            <span className="text-[10px] text-slate-500 truncate max-w-[80px]">
-              {gift.category}
-            </span>
-          )}
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700/60">
+            {categoryTag}
+          </span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300 bg-slate-800/90 border border-slate-700/60">
+            {effectTag}
+          </span>
+        </div>
+
+        {/* Serial Number & Duration Line: NO.273806 | *** | 时长: 7S */}
+        <div className="flex items-center text-[10px] text-slate-500 font-mono tracking-tight pt-0.5">
+          <span className="text-slate-400 font-medium">{serialNo}</span>
+          <span className="mx-1 text-slate-600">|</span>
+          <span className="text-slate-600">***</span>
+          <span className="mx-1 text-slate-600">|</span>
+          <span className="text-slate-400">{lang === 'ar' ? `المدة: ${durationSec}ث` : lang === 'en' ? `Duration: ${durationSec}s` : `时长:${durationSec}S`}</span>
+        </div>
+
+        {/* Studio / Creator Footer Line: Avatar + Studio Name */}
+        <div className="flex items-center gap-1.5 pt-1.5 mt-0.5 border-t border-slate-800/60 text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors">
+          <img
+            src={authorAvatar}
+            alt={authorName}
+            className="w-4 h-4 rounded-full object-cover border border-slate-700 shrink-0"
+            loading="lazy"
+          />
+          <span className="truncate font-medium text-[11px] text-slate-300 group-hover:text-white">
+            {authorName}
+          </span>
         </div>
       </div>
     </div>
   );
 };
+

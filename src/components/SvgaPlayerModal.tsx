@@ -48,7 +48,7 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
   const [currentFrame, setCurrentFrame] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1.0);
   const [isLoop, setIsLoop] = useState<boolean>(true);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
   const [backdrop, setBackdrop] = useState<'checker' | 'dark' | 'livestream' | 'black' | 'white'>('checker');
   const [activeTab, setActiveTab] = useState<'player' | 'layers' | 'metrics'>('player');
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -157,6 +157,7 @@ export const SvgaPlayerModal: React.FC<SvgaPlayerModalProps> = ({
                     autoPlay={isPlaying}
                     muted={isMuted}
                     playsInline
+                    crossOrigin="anonymous"
                     preload="auto"
                     onTimeUpdate={() => {
                       if (videoRef.current) {

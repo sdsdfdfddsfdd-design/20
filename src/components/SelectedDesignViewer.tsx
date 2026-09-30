@@ -35,28 +35,23 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
   const t = translations[lang];
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [backdrop, setBackdrop] = useState<'dark' | 'stage' | 'black' | 'white'>('dark');
 
   useEffect(() => {
+    setIsMuted(true);
     if (gift?.videoUrl) {
       setVideoSrc(resolveMediaUrl(gift.videoUrl));
     }
-  }, [gift?.videoUrl]);
+  }, [gift?.id, gift?.videoUrl]);
 
-  // When selected gift changes, ensure audio is ready and video plays immediately
+  // When selected gift changes, ensure audio starts MUTED by default
   useEffect(() => {
     if (videoRef.current && videoSrc) {
       videoRef.current.currentTime = 0;
       videoRef.current.muted = isMuted;
-      videoRef.current.play().catch(() => {
-        // Fallback for strict browser autoplay policies
-        if (videoRef.current) {
-          videoRef.current.muted = true;
-          videoRef.current.play().catch(() => {});
-        }
-      });
+      videoRef.current.play().catch(() => {});
     }
   }, [gift?.id, videoSrc, isMuted]);
 
@@ -98,23 +93,17 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
     ) && !gift.videoUrl.toLowerCase().includes('.mp4') && !gift.videoUrl.toLowerCase().includes('.webm')
   );
 
-  const isVideo = Boolean(
-    gift.videoUrl && (
-      gift.videoUrl.toLowerCase().includes('.mp4') ||
-      gift.videoUrl.toLowerCase().includes('.webm') ||
-      gift.videoUrl.includes('video/')
+  const isImageFile = Boolean(
+    !gift.videoUrl || (
+      gift.videoUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+      gift.videoUrl.startsWith('data:image/')
     )
   );
 
+  const isVideo = Boolean(gift.videoUrl && !isSvga && !isImageFile);
+
   const resolvedPoster = gift.posterUrl ? resolveMediaUrl(gift.posterUrl) : '';
   const resolvedVideo = gift.videoUrl ? resolveMediaUrl(gift.videoUrl) : '';
-  const isImageFile = Boolean(
-    (gift.videoUrl && (
-      gift.videoUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
-      gift.videoUrl.startsWith('data:image/')
-    )) || (!isSvga && !isVideo && (gift.posterUrl || gift.videoUrl))
-  );
-
   const finalImageSource = resolvedPoster || (isImageFile ? (videoSrc || resolvedVideo) : '');
 
   return (
@@ -173,6 +162,15 @@ export const SelectedDesignViewer: React.FC<SelectedDesignViewerProps> = ({
               src={finalImageSource}
               alt={displayTitle}
               className="max-h-full max-w-full object-contain opacity-100 filter-none select-none drop-shadow-2xl"
+              onError={(e) => {
+                const target = e.currentTarget;
+                const rawUrl = gift.posterUrl || gift.videoUrl || '';
+                if (rawUrl.startsWith('http') && !target.src.includes('/api/proxy-media')) {
+                  target.src = `/api/proxy-media?url=${encodeURIComponent(rawUrl)}`;
+                } else if (gift.videoUrl && target.src !== gift.videoUrl) {
+                  target.src = resolveMediaUrl(gift.videoUrl);
+                }
+              }}
             />
           </div>
         ) : (
