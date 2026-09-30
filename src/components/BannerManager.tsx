@@ -204,16 +204,16 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white">
-                  {lang === 'ar' ? '📐 دليل المقاسات الرسمية المعتمدة للبنر الرئيسي' : '📐 官方首页横幅尺寸与设计规范'}
+                  {lang === 'ar' ? '📐 نظام البنر المتكيف بالكامل (Auto-Adaptive Hero Banner)' : '📐 全自适应横幅系统'}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full bg-purple-400/20 border border-purple-400/40 text-[10px] text-purple-200 font-bold">
-                  {lang === 'ar' ? 'معيار التصميم' : 'Spec'}
+                <span className="px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/40 text-[10px] text-emerald-300 font-bold">
+                  {lang === 'ar' ? 'متكيف مع أي مقاس 100%' : '100% Adaptive'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-2xl">
                 {lang === 'ar' 
-                  ? 'للحصول على أفضل مظهر بصري متناسق لجميع الزوار على الهواتف وأجهزة الكمبيوتر، يُرجى اعتماد المقاسات التالية عند تصميم أو رفع البنر:'
-                  : '为确保横幅在手机端与桌面端呈现最佳视觉效果，请严格遵循以下尺寸规格设计：'}
+                  ? 'يتكيف البنر تلقائياً مع أي صورة ترفعها بأي أبعاد أو نسبة عرض إلى ارتفاع، ويظهر بالكامل بدون أي حواف فارغة أو مساحات سوداء مقتطعة.'
+                  : '横幅现已完美自适应任何上传尺寸与比例，全画幅完整呈现，零留白零黑边。'}
               </p>
             </div>
           </div>
@@ -221,21 +221,21 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
           {/* Quick Specifications Pills */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
             <div className="p-3 rounded-xl bg-slate-900/90 border border-purple-500/30 text-center">
-              <div className="text-[10px] text-purple-300 font-semibold">{lang === 'ar' ? 'شاشات الكمبيوتر والديسكتوب' : '桌面全宽'}</div>
+              <div className="text-[10px] text-purple-300 font-semibold">{lang === 'ar' ? 'المقاس البانورامي الواسع' : '超宽大图'}</div>
               <div className="text-sm font-mono font-black text-white mt-0.5">1920 × 600 px</div>
-              <div className="text-[10px] text-slate-400 font-mono">نسبة 16:5 (Ultra-Wide)</div>
+              <div className="text-[10px] text-emerald-400 font-mono">{lang === 'ar' ? 'كامل العرض بدون حواف' : '无黑边自适应'}</div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-center">
-              <div className="text-[10px] text-cyan-300 font-semibold">{lang === 'ar' ? 'الشاشات المتوسطة والآيباد' : '平板设备'}</div>
-              <div className="text-sm font-mono font-black text-white mt-0.5">1200 × 450 px</div>
-              <div className="text-[10px] text-slate-400 font-mono">نسبة 8:3 (Balanced)</div>
+              <div className="text-[10px] text-cyan-300 font-semibold">{lang === 'ar' ? 'المقاس المتوسط أو القياسي' : '标准中图'}</div>
+              <div className="text-sm font-mono font-black text-white mt-0.5">1200 × 500 px</div>
+              <div className="text-[10px] text-emerald-400 font-mono">{lang === 'ar' ? 'يتكيف تلقائياً' : '自适应高度'}</div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-center">
-              <div className="text-[10px] text-emerald-300 font-semibold">{lang === 'ar' ? 'الهواتف الذكية (Mobile)' : '手机移动端'}</div>
-              <div className="text-sm font-mono font-black text-white mt-0.5">800 × 450 px</div>
-              <div className="text-[10px] text-slate-400 font-mono">نسبة 16:9 (Standard)</div>
+              <div className="text-[10px] text-emerald-300 font-semibold">{lang === 'ar' ? 'أي مقاس أو نسبة أخرى' : '任意尺寸'}</div>
+              <div className="text-sm font-mono font-black text-white mt-0.5">{lang === 'ar' ? 'حر بالكامل' : '完全自由'}</div>
+              <div className="text-[10px] text-emerald-400 font-mono">{lang === 'ar' ? 'ظهور كامل 100%' : '100% 全显'}</div>
             </div>
           </div>
         </div>
@@ -254,48 +254,54 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
             <Eye className="w-4 h-4 text-cyan-400" />
-            <span>{lang === 'ar' ? 'معاينة حية لشكل البنر على واجهة الموقع:' : '横幅实时效果预览：'}</span>
+            <span>{lang === 'ar' ? 'معاينة حية لشكل البنر على واجهة الموقع (يظهر بالكامل بدون أي حواف فاضية):' : '横幅实时效果预览（全屏完整呈现，无留白）：'}</span>
           </label>
-          <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/60 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
-            📐 {dimensionsNote || '1920 × 600 px'}
+          <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+            ✓ {lang === 'ar' ? 'عرض متكامل بدون حواف' : 'Zero Borders'}
           </span>
         </div>
 
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl p-6 sm:p-8 min-h-[190px] sm:min-h-[220px] flex flex-col justify-center">
-          {/* Background Image Preview */}
+        <div className="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden border border-cyan-500/30 bg-transparent shadow-2xl p-0 block transition-all">
+          {/* Background Image Preview - Edge to edge without any borders */}
           {imageUrl ? (
-            <div 
-              className="absolute inset-0 bg-cover bg-center opacity-100"
-              style={{ backgroundImage: `url(${imageUrl})` }}
-            >
+            <div className="relative w-full block">
+              <img
+                src={imageUrl}
+                alt="Banner Preview"
+                className="w-full h-auto block rounded-2xl sm:rounded-3xl object-cover select-none"
+              />
               {(title || subtitle || badge || btnText) && (
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/50 to-slate-950/20" />
+                <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-slate-950/90 via-slate-950/40 to-transparent rounded-2xl sm:rounded-3xl" />
               )}
             </div>
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-indigo-950/80 to-blue-950/90" />
+            <div className="w-full min-h-[160px] sm:min-h-[200px] bg-gradient-to-r from-slate-950 via-indigo-950/80 to-blue-950/90 flex items-center justify-center p-6 text-center">
+              <span className="text-xs text-slate-300">
+                ✨ {lang === 'ar' ? 'قم برفع صورة أو كتابة نص للبنر لرؤية المعاينة الحية' : '上传图片或输入文本查看实时预览'}
+              </span>
+            </div>
           )}
 
           {/* Render text overlay ONLY if at least one text field is filled */}
-          {(title || subtitle || badge || btnText) ? (
-            <div className="relative z-10 max-w-2xl">
+          {(title || subtitle || badge || btnText) && imageUrl ? (
+            <div className="absolute bottom-0 inset-x-0 p-4 sm:p-6 z-10 max-w-2xl">
               {badge && (
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[11px] font-semibold text-cyan-300 shadow-sm backdrop-blur">
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-[10px] font-semibold text-cyan-300 shadow-sm backdrop-blur">
+                    <ShieldCheck className="w-3 h-3 text-cyan-400" />
                     <span>{badge}</span>
                   </span>
                 </div>
               )}
 
               {title && (
-                <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-snug mb-2">
+                <h2 className="text-base sm:text-xl font-extrabold text-white tracking-tight leading-snug mb-1">
                   {title}
                 </h2>
               )}
 
               {subtitle && (
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4 max-w-xl">
+                <p className="text-xs text-slate-300 leading-relaxed mb-3 max-w-xl line-clamp-2">
                   {subtitle}
                 </p>
               )}
@@ -303,20 +309,20 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
               {btnText && (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-cyan-500/20"
                 >
                   <span>{btnText}</span>
                   {btnLink && <ExternalLink className="w-3 h-3 text-white/80" />}
                 </button>
               )}
             </div>
-          ) : (
-            <div className="relative z-10 text-center py-6">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/80 text-[11px] text-slate-300">
-                ✨ {lang === 'ar' ? 'بنر بصري نقي بدون كتابة (الصورة تظهر واضحة بالكامل للزوار)' : '纯图片横幅（全高清展现，无遮挡）'}
+          ) : imageUrl ? (
+            <div className="absolute bottom-2.5 right-3 z-10">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm border border-white/20 text-[10px] text-white font-medium">
+                ✨ {lang === 'ar' ? 'بنر بصري نقي بدون كتابة (يظهر بالكامل 100%)' : '纯视觉全画幅横幅'}
               </span>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 

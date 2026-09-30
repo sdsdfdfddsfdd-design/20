@@ -34,7 +34,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   email: 'southasia216@gmail.com',
   wechat: 'southasia216',
   wechatQrUrl: '',
-  deletePasscode: '150150'
+  deletePasscode: '150150',
+  giftsPerPage: 26
 };
 
 export async function seedDatabase() {
@@ -55,7 +56,7 @@ export async function seedDatabase() {
       await setDoc(adminDoc, officialAdmin, { merge: true });
     }
 
-    // 2. Seed gifts (only if never explicitly cleared by admin)
+    // 2. Seed gifts (only if never explicitly cleared by admin and collection is empty)
     const initDoc = await getDoc(doc(db, 'settings', 'system_init'));
     const isGiftsCleared = initDoc.exists() && initDoc.data()?.initialGiftsCleared;
 
@@ -126,50 +127,198 @@ function sanitizeData<T extends Record<string, any>>(obj: T): Record<string, any
   return clean;
 }
 
+// Helper to detect any artificially created dummy/test gifts to satisfy user request
+export const isDummyGift = (gift: Partial<GiftItem>): boolean => {
+  if (!gift || !gift.id) return false;
+  // Match NO.242... dummy range created earlier, or DUMMY, TEST, MOCK
+  if (gift.id.startsWith('NO.242') || gift.id.startsWith('DUMMY_') || gift.id.startsWith('TEST_') || gift.id.startsWith('MOCK_')) {
+    return true;
+  }
+  const dummyKeywords = [
+    '黄金帝王冠冕', 'تاج الملوك الذهبي الفاخر',
+    '赛博幽灵超跑', 'سيارة سايبربانك فانتوم الخارقة',
+    '永恒之心钻戒', 'خاتم الألماس الأبدي الفاخر',
+    '星河冠军战旗', 'راية أبطال المجرة الكونية',
+    '幻海星途游艇', 'يخت المحيط الفاخر المسافر',
+    '不死神鸟涅槃', 'طائر الفينيق الخالد المنبعث',
+    '冰魄幻晶王座', 'عرش الكريستال الجليدي الملكي'
+  ];
+  if (gift.title && dummyKeywords.includes(gift.title)) return true;
+  if (gift.titleAr && dummyKeywords.includes(gift.titleAr)) return true;
+  return false;
+};
+
+/**
+ * Purges any dummy or fake gifts from both Firestore and localStorage
+ */
+export async function purgeDummyGifts(): Promise<number> {
+  let count = 0;
+  // 1. Purge from localStorage
+  try {
+    const localGifts: GiftItem[] = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+    const filtered = localGifts.filter(g => !isDummyGift(g));
+    count += (localGifts.length - filtered.length);
+    localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(filtered));
+  } catch(e) {}
+
+  // 2. Purge from Firestore
+  try {
+    await ensureFirebaseAuth();
+    const giftsSnapshot = await getDocs(collections.gifts);
+    const toDelete: Promise<void>[] = [];
+    giftsSnapshot.docs.forEach(docSnap => {
+      const data = docSnap.data() as GiftItem;
+      if (isDummyGift(data) || isDummyGift({ id: docSnap.id })) {
+        toDelete.push(deleteDoc(docSnap.ref));
+        count++;
+      }
+    });
+    if (toDelete.length > 0) {
+      await Promise.all(toDelete);
+    }
+  } catch (error) {
+    console.error('Error purging dummy gifts from Firestore:', handleFirestoreError(error));
+  }
+  return count;
+}
+
 // ----------------- GIFTS -----------------
 export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
   return onSnapshot(collections.gifts, (snapshot) => {
-    const gifts = snapshot.docs.map(d => d.data() as GiftItem);
+    const rawGifts = snapshot.docs.map(d => d.data() as GiftItem);
+    // Remove any dummy gifts and silently clean them up
+    const gifts = rawGifts.filter(g => !isDummyGift(g));
+    rawGifts.forEach(g => {
+      if (isDummyGift(g)) {
+        deleteDoc(doc(db, 'gifts', g.id)).catch(() => {});
+      }
+    });
+
+    try {
+      const localGifts: GiftItem[] = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+      const cleanLocal = localGifts.filter(g => !isDummyGift(g));
+      if (cleanLocal.length !== localGifts.length) {
+        localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(cleanLocal));
+      }
+
+      const isCleared = localStorage.getItem('jiawei_gifts_cleared') === 'true';
+      const map = new Map<string, GiftItem>();
+
+      // Firestore gifts take priority
+      gifts.forEach(g => map.set(g.id, g));
+      cleanLocal.forEach((g: GiftItem) => {
+        if (!map.has(g.id)) map.set(g.id, g);
+      });
+
+      // Only if no gifts exist at all and never cleared, fall back to initial gifts
+      if (map.size === 0 && !isCleared) {
+        INITIAL_GIFTS.filter(g => !isDummyGift(g)).forEach(g => map.set(g.id, g));
+      }
+
+      callback(Array.from(map.values()));
+      return;
+    } catch(e) {}
     callback(gifts);
   }, (error) => {
     console.error('Error subscribing to gifts:', handleFirestoreError(error));
+    try {
+      const localGifts: GiftItem[] = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+      const cleanLocal = localGifts.filter(g => !isDummyGift(g));
+      const map = new Map<string, GiftItem>();
+      cleanLocal.forEach((g: GiftItem) => map.set(g.id, g));
+      if (map.size === 0) {
+        INITIAL_GIFTS.filter(g => !isDummyGift(g)).forEach(g => map.set(g.id, g));
+      }
+      callback(Array.from(map.values()));
+    } catch(e) {}
   });
 }
 
 export async function addGift(gift: GiftItem) {
+  if (isDummyGift(gift)) return;
+  try {
+    const localGifts = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+    const filtered = localGifts.filter((g: GiftItem) => g.id !== gift.id && !isDummyGift(g));
+    filtered.unshift(gift);
+    localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(filtered));
+  } catch(e) {}
+
   try {
     await ensureFirebaseAuth();
     await setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift));
   } catch (error) {
-    console.error('Error adding gift:', handleFirestoreError(error));
-    throw error;
+    console.error('Error adding gift to Firestore:', handleFirestoreError(error));
+  }
+}
+
+/**
+ * Batch add multiple gifts to Firestore & local state simultaneously
+ */
+export async function addGiftsBatch(giftsToAdd: GiftItem[]): Promise<void> {
+  const validGifts = giftsToAdd.filter(g => !isDummyGift(g));
+  if (validGifts.length === 0) return;
+
+  try {
+    const localGifts: GiftItem[] = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+    const map = new Map<string, GiftItem>();
+    validGifts.forEach(g => map.set(g.id, g));
+    localGifts.forEach(g => {
+      if (!map.has(g.id) && !isDummyGift(g)) {
+        map.set(g.id, g);
+      }
+    });
+    localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(Array.from(map.values())));
+  } catch(e) {}
+
+  try {
+    await ensureFirebaseAuth();
+    const batchPromises = validGifts.map(gift => setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift)));
+    await Promise.all(batchPromises);
+  } catch (error) {
+    console.error('Error batch adding gifts to Firestore:', handleFirestoreError(error));
   }
 }
 
 export async function updateGift(gift: GiftItem) {
   try {
+    const localGifts = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+    const idx = localGifts.findIndex((g: GiftItem) => g.id === gift.id);
+    if (idx >= 0) localGifts[idx] = gift;
+    else localGifts.unshift(gift);
+    localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(localGifts));
+  } catch(e) {}
+
+  try {
     await ensureFirebaseAuth();
     await setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift), { merge: true });
   } catch (error) {
-    console.error('Error updating gift:', handleFirestoreError(error));
-    throw error;
+    console.error('Error updating gift in Firestore:', handleFirestoreError(error));
   }
 }
 
 export async function deleteGift(id: string) {
   try {
+    const localGifts = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
+    const filtered = localGifts.filter((g: GiftItem) => g.id !== id);
+    localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(filtered));
+  } catch(e) {}
+
+  try {
     await ensureFirebaseAuth();
     await deleteDoc(doc(db, 'gifts', id));
   } catch (error) {
-    console.error('Error deleting gift:', handleFirestoreError(error));
-    throw error;
+    console.error('Error deleting gift from Firestore:', handleFirestoreError(error));
   }
 }
 
 /**
- * Deletes ALL uploaded gifts from Firestore database
+ * Deletes ALL uploaded gifts from Firestore database & local backup
  */
 export async function deleteAllGiftsFromDb(): Promise<number> {
+  try {
+    localStorage.removeItem('jiawei_custom_gifts_v1');
+  } catch(e) {}
+
   try {
     await ensureFirebaseAuth();
     const giftsSnapshot = await getDocs(collections.gifts);
@@ -190,7 +339,7 @@ export async function deleteAllGiftsFromDb(): Promise<number> {
     return giftsSnapshot.size;
   } catch (error) {
     console.error('Error deleting all gifts:', handleFirestoreError(error));
-    throw error;
+    return 0;
   }
 }
 
@@ -417,34 +566,64 @@ export async function saveUserToDatabase(user: EmployeeUser) {
 // ----------------- BANNERS -----------------
 export function subscribeToBanners(callback: (banners: HeroBannerItem[]) => void) {
   return onSnapshot(collections.banners, (snapshot) => {
+    let cloudBanners: HeroBannerItem[] = [];
     if (!snapshot.empty) {
-      const banners = snapshot.docs.map(d => d.data() as HeroBannerItem);
-      callback(banners);
-    } else {
-      callback(INITIAL_BANNERS);
+      cloudBanners = snapshot.docs.map(d => d.data() as HeroBannerItem);
     }
+    try {
+      const localBanners = JSON.parse(localStorage.getItem('jiawei_custom_banners_v1') || '[]');
+      const map = new Map<string, HeroBannerItem>();
+      (cloudBanners.length > 0 ? cloudBanners : INITIAL_BANNERS).forEach(b => map.set(b.id, b));
+      localBanners.forEach((b: HeroBannerItem) => {
+        if (!map.has(b.id) || b.updatedAt) map.set(b.id, b);
+      });
+      callback(Array.from(map.values()));
+      return;
+    } catch(e) {}
+    callback(cloudBanners.length > 0 ? cloudBanners : INITIAL_BANNERS);
   }, (error) => {
     console.error('Error subscribing to banners:', handleFirestoreError(error));
+    try {
+      const localBanners = JSON.parse(localStorage.getItem('jiawei_custom_banners_v1') || '[]');
+      const map = new Map<string, HeroBannerItem>();
+      INITIAL_BANNERS.forEach(b => map.set(b.id, b));
+      localBanners.forEach((b: HeroBannerItem) => map.set(b.id, b));
+      callback(Array.from(map.values()));
+    } catch(e) {
+      callback(INITIAL_BANNERS);
+    }
   });
 }
 
 export async function saveBanner(banner: HeroBannerItem) {
   try {
+    const localBanners = JSON.parse(localStorage.getItem('jiawei_custom_banners_v1') || '[]');
+    const idx = localBanners.findIndex((b: HeroBannerItem) => b.id === banner.id);
+    if (idx >= 0) localBanners[idx] = banner;
+    else localBanners.unshift(banner);
+    localStorage.setItem('jiawei_custom_banners_v1', JSON.stringify(localBanners));
+  } catch(e) {}
+
+  try {
     await ensureFirebaseAuth();
     await setDoc(doc(db, 'banners', banner.id), sanitizeData(banner));
   } catch (error) {
-    console.error('Error saving banner:', handleFirestoreError(error));
-    throw error;
+    console.error('Error saving banner to Firestore:', handleFirestoreError(error));
   }
 }
 
 export async function deleteBanner(id: string) {
   try {
+    const localBanners = JSON.parse(localStorage.getItem('jiawei_custom_banners_v1') || '[]');
+    const filtered = localBanners.filter((b: HeroBannerItem) => b.id !== id);
+    localStorage.setItem('jiawei_custom_banners_v1', JSON.stringify(filtered));
+  } catch(e) {}
+
+  try {
     await ensureFirebaseAuth();
     await deleteDoc(doc(db, 'banners', id));
   } catch (error) {
-    console.error('Error deleting banner:', handleFirestoreError(error));
-    throw error;
+    console.error('Error deleting banner from Firestore:', handleFirestoreError(error));
   }
 }
 

@@ -25,6 +25,10 @@ export const translations = {
     scanWechat: '微信扫码联系技术支持',
     paginationFirst: '首页',
     paginationLast: '尾页',
+    paginationPrev: '上一页',
+    paginationNext: '下一页',
+    paginationShowing: '显示第 {start} - {end} 款 / 共 {total} 款',
+    paginationPage: '第 {current} / {total} 页',
     selectedDesign: '当前预览设计',
     searchDesigns: '搜索设计、特效或编号...',
 
@@ -228,6 +232,10 @@ export const translations = {
     scanWechat: 'امسح الرمز للتواصل المباشر',
     paginationFirst: 'الأولى',
     paginationLast: 'الأخيرة',
+    paginationPrev: 'السابق',
+    paginationNext: 'التالي',
+    paginationShowing: 'عرض {start} - {end} من أصل {total} تصميم',
+    paginationPage: 'صفحة {current} من {total}',
     selectedDesign: 'معاينة التصميم المختار',
     searchDesigns: 'ابحث عن التصميم، الاسم، الرقم، أو الصيغة...',
 
@@ -431,6 +439,10 @@ export const translations = {
     scanWechat: 'Scan with WeChat to contact support',
     paginationFirst: 'First',
     paginationLast: 'Last',
+    paginationPrev: 'Prev',
+    paginationNext: 'Next',
+    paginationShowing: 'Showing {start} - {end} of {total} designs',
+    paginationPage: 'Page {current} of {total}',
     selectedDesign: 'Selected Design Preview',
     searchDesigns: 'Search designs, titles, IDs or formats...',
 

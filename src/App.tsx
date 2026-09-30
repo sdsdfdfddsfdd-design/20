@@ -200,13 +200,24 @@ export default function App() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isVipOpen, setIsVipOpen] = useState(false);
 
-  // Pagination State (10 items per page as in reference video!)
-  const ITEMS_PER_PAGE = 10;
+  // Pagination State: Configurable from Dashboard siteSettings (default 26)!
+  const ITEMS_PER_PAGE = Math.max(1, siteSettings?.giftsPerPage || 26);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Deduplicate and stable-sort gifts (avoids duplicates across pages)
+  const uniqueGifts = useMemo(() => {
+    const map = new Map<string, GiftItem>();
+    gifts.forEach((g) => {
+      if (g && g.id && !map.has(g.id)) {
+        map.set(g.id, g);
+      }
+    });
+    return Array.from(map.values());
+  }, [gifts]);
 
   // Filter Logic
   const filteredGifts = useMemo(() => {
-    return gifts.filter((gift) => {
+    return uniqueGifts.filter((gift) => {
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -251,7 +262,7 @@ export default function App() {
 
       return true;
     });
-  }, [gifts, searchQuery, category]);
+  }, [uniqueGifts, searchQuery, category]);
 
   // Reset pagination when filter or search changes
   useEffect(() => {
@@ -265,8 +276,16 @@ export default function App() {
     }
   }, [filteredGifts, inspectedGift]);
 
-  // Paginated gifts slice
+  // Paginated gifts slice: Exactly 26 items per page!
   const totalPages = Math.max(1, Math.ceil(filteredGifts.length / ITEMS_PER_PAGE));
+
+  // Automatically clamp currentPage if totalPages shrinks
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
   const paginatedGifts = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredGifts.slice(start, start + ITEMS_PER_PAGE);
@@ -428,7 +447,7 @@ ID الحساب: ${user.id}` : ''}
 
       {/* 2. Main Body Content */}
       {currentView === 'store' ? (
-        <main className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-5 lg:px-6 py-2 flex flex-col">
+        <main className="flex-1 w-full max-w-[1720px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-4 flex flex-col min-w-0 overflow-x-hidden">
           {/* Gallery Title, Subtitle & Featured Banner */}
           <HeroBanners
             lang={lang}
@@ -446,60 +465,72 @@ ID الحساب: ${user.id}` : ''}
             lang={lang}
           />
 
-          {/* Design Cards Grid (Mobile 2 Columns) */}
-          {filteredGifts.length === 0 ? (
-            <div className="py-20 text-center text-slate-500 space-y-3">
-              <p className="text-sm">
-                {lang === 'ar' ? 'لم يتم العثور على تصاميم تطابق خيارات التصفية' : '未找到匹配的设计或动效'}
-              </p>
-              <button
-                onClick={handleResetFilters}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-cyan-400 text-xs font-semibold border border-slate-800"
-              >
-                {lang === 'ar' ? 'إعادة ضبط البحث' : '重置搜索与分类'}
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Cards Grid: 2 columns on mobile, expanding smoothly on tablet & desktop */}
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3.5 mt-2">
-                {paginatedGifts.map((gift) => (
-                  <GiftCard
-                    key={gift.id}
-                    gift={gift}
-                    lang={lang}
-                    isSelected={inspectedGift?.id === gift.id}
-                    onSelectGift={(g) => {
-                      setInspectedGift(g);
-                      setSelectedGift(g);
-                    }}
-                    onQuickBuy={(g) => handleInitiatePurchase(g)}
-                    onAddToCart={(g) => handleAddToCart(g)}
-                  />
-                ))}
+          {/* Design Cards Grid Section */}
+          <section id="gifts-gallery-section" className="w-full flex flex-col scroll-mt-20">
+            {filteredGifts.length === 0 ? (
+              <div className="py-20 text-center text-slate-500 space-y-3">
+                <p className="text-sm">
+                  {lang === 'ar' ? 'لم يتم العثور على تصاميم تطابق خيارات التصفية' : '未找到匹配的设计或动效'}
+                </p>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-cyan-400 text-xs font-semibold border border-slate-800"
+                >
+                  {lang === 'ar' ? 'إعادة ضبط البحث' : '重置搜索与分类'}
+                </button>
               </div>
+            ) : (
+              <>
+                {/* Cards Grid: 2 columns on mobile, expanding smoothly across tablet, laptop, and desktop (Strictly 26 per page) */}
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5 lg:gap-4.5 mt-2">
+                  {paginatedGifts.map((gift) => (
+                    <GiftCard
+                      key={gift.id}
+                      gift={gift}
+                      lang={lang}
+                      isSelected={inspectedGift?.id === gift.id}
+                      onSelectGift={(g) => {
+                        setInspectedGift(g);
+                        setSelectedGift(g);
+                      }}
+                      onQuickBuy={(g) => handleInitiatePurchase(g)}
+                      onAddToCart={(g) => handleAddToCart(g)}
+                    />
+                  ))}
+                </div>
 
-              {/* Pagination Controls */}
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={(page) => {
-                  setCurrentPage(page);
-                  window.scrollTo({ top: 250, behavior: 'smooth' });
-                }}
-                lang={lang}
-              />
+                {/* Pagination Controls */}
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredGifts.length}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  onPageChange={(page) => {
+                    setCurrentPage(page);
+                    const el = document.getElementById('gifts-gallery-section');
+                    if (el) {
+                      const y = el.getBoundingClientRect().top + window.pageYOffset - 85;
+                      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+                    } else {
+                      window.scrollTo({ top: 250, behavior: 'smooth' });
+                    }
+                  }}
+                  lang={lang}
+                />
 
-              {/* Large Inspection Preview Player (As in Reference Video at 0:25) */}
-              <SelectedDesignViewer
-                gift={inspectedGift || filteredGifts[0] || null}
-                lang={lang}
-                onOpenDetails={(g) => setSelectedGift(g)}
-                onAddToCart={(g) => handleAddToCart(g)}
-                onBuyWhatsApp={(g) => handleInitiatePurchase(g)}
-              />
-            </>
-          )}
+                {/* Large Inspection Preview Player (As in Reference Video at 0:25) */}
+                <div className="w-full max-w-4xl mx-auto mt-4">
+                  <SelectedDesignViewer
+                    gift={inspectedGift || filteredGifts[0] || null}
+                    lang={lang}
+                    onOpenDetails={(g) => setSelectedGift(g)}
+                    onAddToCart={(g) => handleAddToCart(g)}
+                    onBuyWhatsApp={(g) => handleInitiatePurchase(g)}
+                  />
+                </div>
+              </>
+            )}
+          </section>
         </main>
       ) : (
         /* DASHBOARD VIEW (Admin / Staff with Full Permissions) */

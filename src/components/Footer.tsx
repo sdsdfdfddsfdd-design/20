@@ -18,7 +18,7 @@ export const Footer: React.FC<FooterProps> = ({
 
   return (
     <footer className="w-full bg-[#07090e] border-t border-slate-900 text-xs text-slate-500 py-6 px-4 mt-8 select-none">
-      <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-start">
+      <div className="max-w-[1720px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-start">
         <div className="flex items-center gap-2 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>

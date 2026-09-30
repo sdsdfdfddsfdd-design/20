@@ -41,8 +41,8 @@ export interface GiftItem {
   downloadUrl?: string; // Direct download link
   externalVideoId?: string; // ID referencing ExternalVideo record
   uploadProvider?: 'top4top' | 'local' | 'cloud';
-  downloadsCount: number;
-  favoritesCount: number;
+  downloadsCount?: number;
+  favoritesCount?: number;
   isNew?: boolean;
   isFeatured?: boolean;
   isVip?: boolean;
@@ -131,6 +131,7 @@ export interface HeroBannerItem {
   dimensionsNote?: string;
   isActive?: boolean;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CustomCategory {
@@ -157,6 +158,7 @@ export interface SiteSettings {
   wechat?: string;
   wechatQrUrl?: string; // Custom uploaded WeChat QR code / Barcode image
   deletePasscode?: string; // Security passcode to confirm deleting all products (e.g. 150150)
+  giftsPerPage?: number; // Number of gifts per page in storefront (configurable from Dashboard)
   updatedAt?: string;
 }
 
@@ -273,6 +275,208 @@ export interface ExternalVideoRecord {
   resolution?: string;
   posterUrl?: string;
   retryCount?: number;
+}
+
+export type CacheCategory = 'all' | 'svga' | 'vap' | 'pag' | 'json' | 'video' | 'image' | 'models' | 'animations' | 'textures' | 'audio' | 'vfx' | 'other' | string;
+
+export interface CacheFileRecord {
+  id: string;
+  name: string;
+  fileName?: string;
+  size: number;
+  type: string;
+  hash: string;
+  url: string;
+  category: CacheCategory;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  sourceFeature?: string;
+  dimensions?: string;
+  duration?: number;
+  storagePath?: string;
+  downloadCount?: number;
+  accessCount?: number;
+  createdAt: string | any;
+  lastAccessedAt?: string | any;
+  tags?: string[];
+  metadata?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface CacheActivityLog {
+  id: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  action: string;
+  details?: string;
+  fileId?: string;
+  fileName?: string;
+  timestamp: string | any;
+  [key: string]: any;
+}
+
+export interface ActivityLog {
+  id: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  action: string;
+  details?: string;
+  fileId?: string;
+  fileName?: string;
+  timestamp: string | any;
+  [key: string]: any;
+}
+
+export interface UserRecord {
+  id: string;
+  uid?: string;
+  name?: string;
+  displayName?: string;
+  email?: string;
+  role?: string;
+  isAdmin?: boolean;
+  isSuperAdmin?: boolean;
+  isApproved?: boolean;
+  status?: string;
+  numericId?: number | string;
+  avatar?: string;
+  telegramChatId?: string;
+  phoneNumber?: string;
+  whatsapp?: string;
+  isOnline?: boolean;
+  lastActive?: string;
+  password?: string;
+  plainPassword?: string;
+  oldPassword?: string;
+  subscriptionExpiry?: string | number | null;
+  freeAttempts?: number;
+  hasCacheAccess?: boolean;
+  [key: string]: any;
+}
+
+export interface CacheStats {
+  totalFiles: number;
+  totalSizeBytes: number;
+  categories: Record<string, number>;
+  activeCacheUsersCount?: number;
+  [key: string]: any;
+}
+
+export interface CachePermissions {
+  canUpload?: boolean;
+  canDelete?: boolean;
+  canDownload?: boolean;
+  canViewLogs?: boolean;
+  view?: boolean;
+  [key: string]: any;
+}
+
+export interface StoreProduct {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  imageUrl: string;
+  videoUrl?: string;
+  supportedFormats?: string[];
+  createdAt?: any;
+  updatedAt?: any;
+  [key: string]: any;
+}
+
+export interface AppSettings {
+  siteName?: string;
+  siteSlogan?: string;
+  primaryPhone?: string;
+  whatsapp?: string;
+  externalLinks?: DashboardExternalLinks;
+  [key: string]: any;
+}
+
+export interface CustomExternalLink {
+  id?: string;
+  name: string;
+  url: string;
+  icon?: string;
+  category?: string;
+  description?: string;
+  enabled?: boolean;
+  [key: string]: any;
+}
+
+export interface DashboardExternalLinks {
+  firstLink?: CustomExternalLink;
+  secondLink?: CustomExternalLink;
+  links?: CustomExternalLink[];
+  [key: string]: any;
+}
+
+export interface PresetBackground {
+  id: string;
+  name: string;
+  url?: string;
+  color?: string;
+  type?: string;
+  [key: string]: any;
+}
+
+export interface SVGAFileInfo {
+  name: string;
+  size: number;
+  data: ArrayBuffer;
+  version?: string;
+  fps?: number;
+  frames?: number;
+  videoSize?: { width: number; height: number };
+  [key: string]: any;
+}
+
+export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
+
+export const PRODUCT_CATEGORIES = ['All', 'Intros', 'Alerts', 'Overlays', 'Emotes', 'Badges', 'Audio', 'Transitions'] as const;
+
+export interface LicenseKey {
+  id?: string;
+  key: string;
+  plan?: string;
+  type?: string;
+  status?: string;
+  expiryDate?: any;
+  activatedAt?: any;
+  [key: string]: any;
+}
+
+export interface FileMetadata {
+  name: string;
+  size: number;
+  type: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  fps?: number;
+  frames?: number;
+  [key: string]: any;
+}
+
+export interface MaterialAsset {
+  id: string;
+  name: string;
+  url: string;
+  type?: string;
+  [key: string]: any;
+}
+
+export interface AccountVersionHistory {
+  id: string;
+  userId: string;
+  action: string;
+  timestamp: string;
+  details?: string;
+  [key: string]: any;
 }
 
 

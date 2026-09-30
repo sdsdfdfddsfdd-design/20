@@ -103,35 +103,33 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onTouchStart={handleMouseEnter}
-      onTouchEnd={handleMouseLeave}
       onClick={() => onSelectGift(gift)}
-      className={`group relative flex flex-col rounded-2xl bg-[#0c1017] border transition-all duration-300 overflow-hidden cursor-pointer shadow-lg hover:shadow-cyan-950/40 ${
+      className={`group relative flex flex-col rounded-2xl bg-[#0c1017] border transition-all duration-300 overflow-hidden cursor-pointer shadow-lg hover:shadow-cyan-950/40 min-w-0 w-full ${
         isSelected 
-          ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20 shadow-xl' 
+          ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20 shadow-xl scale-[1.01]' 
           : 'border-slate-800/90 hover:border-cyan-500/70'
       }`}
     >
       {/* 1. Preview Container with Badges */}
-      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[#0a0d14] to-[#06080d] flex items-center justify-center p-3">
+      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[#0a0d14] to-[#06080d] flex items-center justify-center p-2 sm:p-3">
         {/* Top-Left: Red NEW ribbon badge (exact match to D.png) */}
         <div className="absolute top-0 left-0 z-20">
-          <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-[9px] px-2 py-0.5 rounded-br-lg shadow-md tracking-wider flex items-center gap-0.5">
+          <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-[8px] sm:text-[9px] px-1.5 sm:px-2 py-0.5 rounded-br-lg shadow-md tracking-wider flex items-center gap-0.5">
             <span>NEW</span>
           </div>
         </div>
 
         {/* Top-Right: Sound Effect badge (音效 / صوت) */}
         {hasAudio && (
-          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-500/30 text-cyan-300 text-[10px] font-semibold shadow-sm">
-            <Volume2 className="w-3 h-3 text-cyan-400 animate-pulse" />
+          <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-20 flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-slate-950/85 backdrop-blur-md border border-cyan-500/30 text-cyan-300 text-[9px] sm:text-[10px] font-semibold shadow-sm">
+            <Volume2 className="w-2.5 sm:w-3 h-2.5 sm:h-3 text-cyan-400 animate-pulse" />
             <span>{lang === 'ar' ? 'صوت' : lang === 'en' ? 'Sound' : '音效'}</span>
           </div>
         )}
 
         {/* Media Preview:
             - At rest: Show posterUrl (clean customized cover image)
-            - On Hover/Touch: If videoUrl exists, play video/animation immediately on hover!
+            - On Hover: If videoUrl exists, play video/animation immediately on hover!
         */}
         {hasPoster ? (
           <div className="relative w-full h-full flex items-center justify-center">
@@ -219,55 +217,53 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
-            <Video className="w-8 h-8 opacity-40 mb-1" />
+            <Video className="w-7 sm:w-8 h-7 sm:h-8 opacity-40 mb-1" />
             <span className="text-[10px] font-mono">{effectTag}</span>
           </div>
         )}
       </div>
 
       {/* 2. Content Info Section (Matching Reference D.png) */}
-      <div className="p-3 pt-2.5 flex flex-col gap-1.5 bg-[#0c1017]">
+      <div className="p-2 sm:p-3 pt-2 sm:pt-2.5 flex flex-col gap-1 sm:gap-1.5 bg-[#0c1017] min-w-0">
         {/* Title & Price Row */}
-        <div className="flex items-start justify-between gap-1.5">
-          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-1 leading-snug">
+        <div className="flex items-start justify-between gap-1 sm:gap-1.5 min-w-0">
+          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300 transition-colors truncate leading-snug">
             {displayTitle}
           </h3>
-          <span className="text-emerald-400 font-extrabold text-xs sm:text-sm whitespace-nowrap shrink-0">
-            ¥ {gift.price} <span className="text-[10px] text-emerald-300/80 font-semibold">CNY</span>
+          <span className="text-emerald-400 font-extrabold text-[11px] sm:text-xs md:text-sm whitespace-nowrap shrink-0">
+            ¥ {gift.price} <span className="text-[9px] sm:text-[10px] text-emerald-300/80 font-semibold">CNY</span>
           </span>
         </div>
 
         {/* Tags Row: [海外/حصري] [座驾/هدية] [2D/3D] */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-950/70 text-pink-300 border border-pink-500/30 shadow-xs">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap min-w-0">
+          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-pink-950/70 text-pink-300 border border-pink-500/30 shadow-xs">
             {overseasTag}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700/60">
+          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700/60">
             {categoryTag}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300 bg-slate-800/90 border border-slate-700/60">
+          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono text-slate-300 bg-slate-800/90 border border-slate-700/60">
             {effectTag}
           </span>
         </div>
 
         {/* Serial Number & Duration Line: NO.273806 | *** | 时长: 7S */}
-        <div className="flex items-center text-[10px] text-slate-500 font-mono tracking-tight pt-0.5">
-          <span className="text-slate-400 font-medium">{serialNo}</span>
-          <span className="mx-1 text-slate-600">|</span>
-          <span className="text-slate-600">***</span>
-          <span className="mx-1 text-slate-600">|</span>
-          <span className="text-slate-400">{lang === 'ar' ? `المدة: ${durationSec}ث` : lang === 'en' ? `Duration: ${durationSec}s` : `时长:${durationSec}S`}</span>
+        <div className="flex items-center justify-between text-[9px] sm:text-[10px] text-slate-500 font-mono tracking-tight pt-0.5 min-w-0">
+          <span className="text-slate-400 font-medium truncate">{serialNo}</span>
+          <span className="mx-1 text-slate-700">|</span>
+          <span className="text-slate-400 whitespace-nowrap shrink-0">{lang === 'ar' ? `المدة: ${durationSec}ث` : lang === 'en' ? `${durationSec}s` : `时长:${durationSec}S`}</span>
         </div>
 
         {/* Studio / Creator Footer Line: Avatar + Studio Name */}
-        <div className="flex items-center gap-1.5 pt-1.5 mt-0.5 border-t border-slate-800/60 text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors">
+        <div className="flex items-center gap-1.5 pt-1.5 mt-0.5 border-t border-slate-800/60 text-[10px] sm:text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors min-w-0">
           <img
             src={authorAvatar}
             alt={authorName}
             className="w-4 h-4 rounded-full object-cover border border-slate-700 shrink-0"
             loading="lazy"
           />
-          <span className="truncate font-medium text-[11px] text-slate-300 group-hover:text-white">
+          <span className="truncate font-medium text-[10px] sm:text-[11px] text-slate-300 group-hover:text-white">
             {authorName}
           </span>
         </div>

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import config from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -20,6 +21,7 @@ export const db = initializeFirestore(app, {
 });
 
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Ensure user is authenticated anonymously to satisfy Firestore security rules
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';

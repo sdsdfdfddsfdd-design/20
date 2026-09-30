@@ -21,7 +21,7 @@ import { translations } from '../utils/translations';
 import { AboutModal } from './AboutModal';
 import { LanguageModal } from './LanguageModal';
 
-interface HeaderProps {
+export interface HeaderProps {
   lang: Language;
   setLang: (lang: Language) => void;
   searchQuery: string;
@@ -111,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header className="w-full bg-[#0a0d14] border-b border-slate-900/90 pt-3 pb-3 px-3 sm:px-5 lg:px-8 transition-all">
-        <div className="max-w-4xl mx-auto flex flex-col gap-3">
+        <div className="max-w-[1720px] mx-auto flex flex-col gap-3">
           
           {/* Top Row: Brand Info + WhatsApp Contact */}
           <div className="flex items-center justify-between gap-3">

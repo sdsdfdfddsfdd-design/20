@@ -54,7 +54,9 @@ import {
   Tag,
   Upload,
   Circle,
-  Square
+  Square,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { GiftItem, Language, DeliveryItem, GiftFormat, EmployeeUser, HeroBannerItem, AuthUser, UserRole, UserPermissions, SavedGiftName, MediaAssetItem, SiteSettings } from '../types';
 import { translations } from '../utils/translations';
@@ -89,7 +91,10 @@ import {
   subscribeToSavedGiftNames,
   saveGiftNamesList,
   addSavedGiftName,
-  deleteSavedGiftName
+  deleteSavedGiftName,
+  addGiftsBatch,
+  purgeDummyGifts,
+  isDummyGift
 } from '../lib/firebaseService';
 import { SiteSettingsModal } from './SiteSettingsModal';
 import { DeleteAllGiftsModal } from './DeleteAllGiftsModal';
@@ -259,6 +264,89 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [posterUrl, setPosterUrl] = useState('');
   const [usePosterImage, setUsePosterImage] = useState<boolean>(true);
   const [posterLoadError, setPosterLoadError] = useState(false);
+
+  // Bulk Upload by Links State (رفع جماعي لعدة روابط بتسعيرة موحدة تلقائياً)
+  const [uploadMode, setUploadMode] = useState<'single' | 'bulk'>('single');
+  const [bulkLinksText, setBulkLinksText] = useState('');
+  const [bulkPrice, setBulkPrice] = useState<number>(35);
+  const [bulkVipPrice, setBulkVipPrice] = useState<number>(20);
+  const [bulkExclusivePrice, setBulkExclusivePrice] = useState<number>(149);
+  const [bulkCategory, setBulkCategory] = useState<string>('general');
+  const [bulkTheme, setBulkTheme] = useState<string>('مؤثرات VIP');
+  const [bulkTitlePrefix, setBulkTitlePrefix] = useState<string>('تصميم رقم');
+  const [bulkEffectType, setBulkEffectType] = useState<'2D' | '3D'>('2D');
+  const [isBulkUploading, setIsBulkUploading] = useState<boolean>(false);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkSuccessList, setBulkSuccessList] = useState<GiftItem[]>([]);
+
+  // List View Display Mode (Grid of Large Cards vs Table)
+  const [listDisplayMode, setListDisplayMode] = useState<'grid' | 'table'>('grid');
+  const [customGiftsPerPage, setCustomGiftsPerPage] = useState<number>(() => {
+    return propSiteSettings?.giftsPerPage || 26;
+  });
+  const [isSavingGiftsPerPage, setIsSavingGiftsPerPage] = useState<boolean>(false);
+  const [copiedGiftId, setCopiedGiftId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (propSiteSettings?.giftsPerPage) {
+      setCustomGiftsPerPage(propSiteSettings.giftsPerPage);
+    }
+  }, [propSiteSettings?.giftsPerPage]);
+
+  const handleSaveGiftsPerPage = async () => {
+    try {
+      setIsSavingGiftsPerPage(true);
+      const updated: SiteSettings = {
+        ...(propSiteSettings || DEFAULT_SITE_SETTINGS),
+        giftsPerPage: Math.max(1, customGiftsPerPage)
+      };
+      await saveSiteSettings(updated);
+      setSuccessMessage(
+        lang === 'ar'
+          ? `✓ تم حفظ وتطبيق عدد هدايا الصفحة (${customGiftsPerPage} هدية لكل صفحة) بنجاح على المتجر!`
+          : `✓ Successfully saved gifts per page (${customGiftsPerPage})!`
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (e) {
+      console.error(e);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء حفظ الإعدادات' : 'Failed to save settings');
+    } finally {
+      setIsSavingGiftsPerPage(false);
+    }
+  };
+
+  const handleCopyGiftLink = (gift: GiftItem) => {
+    const linkToCopy = gift.videoUrl || gift.deliveryUrl || gift.posterUrl || '';
+    if (linkToCopy) {
+      navigator.clipboard.writeText(linkToCopy).then(() => {
+        setCopiedGiftId(gift.id);
+        setTimeout(() => setCopiedGiftId(null), 2500);
+      });
+    }
+  };
+
+  // Automatically purge dummy gifts on initial load
+  useEffect(() => {
+    purgeDummyGifts().then((purged) => {
+      if (purged > 0) {
+        setGifts(prev => prev.filter(g => !isDummyGift(g)));
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Parse bulk links in real-time
+  const parsedBulkLinks = useMemo(() => {
+    if (!bulkLinksText.trim()) return [];
+    return bulkLinksText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && (
+        line.startsWith('http://') || 
+        line.startsWith('https://') || 
+        line.startsWith('data:') || 
+        line.includes('.')
+      ));
+  }, [bulkLinksText]);
 
   // Saved Names Presets Library (Persistent in Firestore & localStorage)
   const [savedNamesList, setSavedNamesList] = useState<SavedGiftName[]>(() => {
@@ -853,7 +941,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           deliveryUrl: deliveryUrl.trim() || existing.deliveryUrl,
           cloudDiskCode: cloudDiskCode.trim() || existing.cloudDiskCode
         };
-        updateGift(updatedGift);
+        setGifts(prev => prev.map(g => g.id === editingId ? updatedGift : g));
+        updateGift(updatedGift).catch(() => {});
       }
 
       setEditingId(null);
@@ -894,7 +983,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         createdAt: new Date().toISOString().split('T')[0]
       };
 
-      addGift(newGift);
+      setGifts(prev => [newGift, ...prev]);
+      addGift(newGift).catch(() => {});
 
       // Increment employee's gifts count
       updateEmployee({ ...activeStaff, giftsCount: (activeStaff.giftsCount || 0) + 1 });
@@ -911,10 +1001,156 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setPosterUrl('');
     setIsTestingVideo(false);
 
+    // Keep user on the current screen without closing or switching tabs! (CRITICAL USER REQUEST)
     setTimeout(() => {
       setSuccessMessage(null);
-      setActiveTab('list');
-    }, 1200);
+    }, 5000);
+  };
+
+  // Purge Dummy / Fake Gifts explicitly
+  const handlePurgeDummyGifts = async () => {
+    try {
+      const purged = await purgeDummyGifts();
+      setGifts(prev => prev.filter(g => !isDummyGift(g)));
+      setSuccessMessage(
+        lang === 'ar'
+          ? `✓ تم تنظيف وإزالة أي هدايا وهمية بنجاح (${purged} عنصر تم فحصه وحذفه)!`
+          : `✓ 已成功清理所有虚假与测试礼物！`
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Bulk Upload by Multiple Links with Unified Price (رفع جماعي لعدة روابط بتسعيرة موحدة تلقائياً)
+  const handleBulkUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (parsedBulkLinks.length === 0) {
+      alert(lang === 'ar' ? 'يرجى لصق رابط واحد على الأقل في مربع الروابط' : '请至少输入一条有效链接');
+      return;
+    }
+
+    const canUploadGifts = (activeStaff?.permissions?.giftUploadAndPublish !== false) && (activeStaff?.status !== 'inactive');
+    if (!canUploadGifts) {
+      alert(
+        lang === 'ar'
+          ? '⚠️ تم رفض العملية: ليس لديك صلاحية رفع ونشر الهدايا (Gift Upload & Publishing Permission) أو تم إيقاف هذا الحساب.'
+          : 'Permission Denied: You do not have Gift Upload Permission.'
+      );
+      return;
+    }
+
+    if (!activeStaff.isProfileCompleted) {
+      setIsProfileModalOpen(true);
+      return;
+    }
+
+    setIsBulkUploading(true);
+    setBulkProgress({ current: 0, total: parsedBulkLinks.length });
+
+    const newGiftsBatch: GiftItem[] = [];
+    const dateStr = new Date().toISOString().split('T')[0];
+    const defaultFormats: GiftFormat[] = [
+      { name: 'MP4带声音', size: '5.0MB' },
+      { name: 'SVGA动效文件', size: '10.0MB' },
+      { name: 'VAP透明通道', size: '12.0MB' },
+      { name: 'PAG文件', size: '7.5MB' }
+    ];
+
+    for (let i = 0; i < parsedBulkLinks.length; i++) {
+      const url = parsedBulkLinks[i];
+      const seqNumber = String(i + 1).padStart(2, '0');
+      const newId = 'NO.' + Math.floor(250000 + Math.random() * 80000);
+
+      // Check if image link
+      const isImg = Boolean(
+        url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
+        url.startsWith('data:image/')
+      );
+
+      // Generate title
+      let itemTitle = '';
+      if (bulkTitlePrefix.trim()) {
+        itemTitle = `${bulkTitlePrefix.trim()} #${seqNumber}`;
+      } else {
+        try {
+          const pathname = new URL(url).pathname;
+          const cleanName = pathname.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+          if (cleanName && cleanName.length > 2) {
+            itemTitle = cleanName;
+          } else {
+            itemTitle = `تصميم حصري #${seqNumber}`;
+          }
+        } catch(e) {
+          itemTitle = `تصميم حصري #${seqNumber}`;
+        }
+      }
+
+      const giftItem: GiftItem = {
+        id: newId,
+        title: itemTitle,
+        titleAr: itemTitle,
+        titleEn: `Design #${seqNumber}`,
+        price: Number(bulkPrice) || 35,
+        vipPrice: Number(bulkVipPrice) || Math.round((Number(bulkPrice) || 35) * 0.65),
+        exclusivePrice: Number(bulkExclusivePrice) || Math.round((Number(bulkPrice) || 35) * 4.5),
+        videoUrl: url,
+        posterUrl: isImg ? url : '',
+        formats: defaultFormats,
+        tags: ['AI原创', bulkTheme.trim() || 'VIP', 'دفعة_سريعة', bulkEffectType, 'جديد'],
+        category: bulkCategory,
+        theme: bulkTheme.trim() || 'VIP',
+        effectType: bulkEffectType,
+        author: {
+          id: activeStaff.id,
+          name: activeStaff.name || authorName.trim() || 'سارة المهندس',
+          avatar: activeStaff.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+          verified: true,
+          whatsapp: activeStaff.whatsapp
+        },
+        duration: 12,
+        resolution: '1080x1920',
+        fps: 60,
+        deliveryUrl: url,
+        cloudDiskCode: 'JW8866',
+        downloadsCount: 0,
+        favoritesCount: 0,
+        isNew: true,
+        isFeatured: true,
+        createdAt: dateStr
+      };
+
+      newGiftsBatch.push(giftItem);
+      setBulkProgress({ current: i + 1, total: parsedBulkLinks.length });
+    }
+
+    try {
+      await addGiftsBatch(newGiftsBatch);
+      setGifts(prev => [...newGiftsBatch, ...prev]);
+
+      updateEmployee({
+        ...activeStaff,
+        giftsCount: (activeStaff.giftsCount || 0) + newGiftsBatch.length
+      });
+
+      setBulkSuccessList(newGiftsBatch);
+      setBulkLinksText('');
+
+      setSuccessMessage(
+        lang === 'ar'
+          ? `✓ تم رفع وتنزيل ${newGiftsBatch.length} هدية بنجاح في المتجر دفعة واحدة وبنفس التسعيرة (${bulkPrice} $)!`
+          : `✓ 成功批量发布 ${newGiftsBatch.length} 件礼物素材！`
+      );
+      // CRITICAL: Do NOT close or reopen page/modal! Keep user on screen!
+      setTimeout(() => setSuccessMessage(null), 7000);
+    } catch (uploadErr) {
+      console.error('Error during bulk upload:', uploadErr);
+      alert(lang === 'ar' ? 'حدث خطأ أثناء الرفع الجماعي' : '批量发布失败');
+    } finally {
+      setIsBulkUploading(false);
+      setBulkProgress(null);
+    }
   };
 
   // Save First-Time / Profile Setup & Sync WhatsApp to all gifts
@@ -1309,7 +1545,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDeleteGift = (id: string) => {
     if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه الهدية؟' : '确认删除该礼物素材？')) {
-      deleteGift(id);
+      setGifts(prev => prev.filter(g => g.id !== id));
+      deleteGift(id).catch(() => {});
     }
   };
 
@@ -1706,6 +1943,381 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           )}
 
+          {/* Mode Switch: Single Gift vs Bulk Links Upload */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#111520] border border-slate-800 shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+              <span className="text-xs font-bold text-slate-200">
+                {lang === 'ar' ? 'اختر طريقة الرفع والنشر للمتجر:' : '选择素材发布模式：'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80">
+              <button
+                type="button"
+                onClick={() => setUploadMode('single')}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  uploadMode === 'single'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'رفع فردي (هدية واحدة)' : '单品上传'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUploadMode('bulk')}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  uploadMode === 'bulk'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>{lang === 'ar' ? '⚡ رفع جماعي بالروابط (20 - 30+ رابط)' : '⚡ 批量外链上传'}</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 text-[9px] font-black border border-emerald-400/40">
+                  {lang === 'ar' ? 'تسعيرة موحدة' : '统一定价'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {uploadMode === 'bulk' ? (
+            <div className="bg-[#111520] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-6">
+              {/* Header Info */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-cyan-950/70 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0 shadow">
+                    <UploadCloud className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                      <span>{lang === 'ar' ? 'نظام الرفع الجماعي الفوري لعدة روابط مع تسعيرة موحدة' : '批量外链极速导入系统'}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                        {lang === 'ar' ? 'تلقائي 100%' : '100% Auto'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      {lang === 'ar'
+                        ? 'ضع حتى 20 إلى 30+ رابط مباشر، وحدد تسعيرة موحدة للمجموعة، وسيتم رفعها ونشرها تلقائياً بالكامل بدون إغلاق هذه الصفحة أو وميض الشاشة!'
+                        : '粘贴 20 至 30+ 条直链，设定统一价格，一键全自动批量发布，页面不关闭、不闪烁刷新！'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+                  <span className="text-xs font-mono font-bold text-emerald-300 bg-emerald-950/80 px-3 py-1.5 rounded-xl border border-emerald-500/40 flex items-center gap-1.5">
+                    <span>{lang === 'ar' ? 'الروابط المرصودة:' : '已识别直链:'}</span>
+                    <strong className="text-sm text-white font-extrabold">{parsedBulkLinks.length}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <form onSubmit={handleBulkUpload} className="space-y-6">
+                {/* 1. Multi Links Textarea */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                      <Video className="w-4 h-4 text-cyan-400" />
+                      <span>{lang === 'ar' ? 'ضع الروابط هنا (رابط واحد في كل سطر - يدعم 20، 30، حتى 50+ رابط معاً):' : '输入外链地址列表（每行一条链接，支持50+条）：'} *</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {parsedBulkLinks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setBulkLinksText('')}
+                          className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>{lang === 'ar' ? 'مسح الروابط' : '清空'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={8}
+                    required
+                    value={bulkLinksText}
+                    onChange={(e) => setBulkLinksText(e.target.value)}
+                    placeholder={
+                      lang === 'ar'
+                        ? "ضع الروابط هنا، رابط واحد لكل سطر:\nhttps://assets.mixkit.co/videos/preview/mixkit-bright-light-particles-loop-32943-large.mp4\nhttps://assets.mixkit.co/videos/preview/mixkit-golden-dust-particles-in-motion-33008-large.mp4\nhttps://assets.mixkit.co/videos/preview/mixkit-purple-and-blue-light-particles-in-dark-space-41271-large.mp4\n..."
+                        : "每行粘贴一条直接可访问的视频或动效直链...\nhttps://cdn.example.com/video01.mp4\nhttps://cdn.example.com/video02.mp4"
+                    }
+                    className="w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 text-xs font-mono text-cyan-300 focus:outline-none focus:border-emerald-500 leading-relaxed transition-colors dir-ltr"
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-400 font-bold">✓</span>
+                      <span>{lang === 'ar' ? 'يدعم روابط MP4، SVGA، VAP، PAG وروابط الصور المباشرة (CDN).' : '支持直接 MP4/SVGA/图片 直链。'}</span>
+                    </div>
+                    <div>
+                      {parsedBulkLinks.length > 0 ? (
+                        <span className="text-emerald-400 font-bold font-mono">
+                          {lang === 'ar' ? `جاهز لرفع ${parsedBulkLinks.length} هدية دفعة واحدة 🚀` : `已就绪 ${parsedBulkLinks.length} 件 🚀`}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">
+                          {lang === 'ar' ? 'الصق الروابط لتفعيل زر الرفع الموحد' : '粘贴链接后即可发布'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Unified Pricing Card ("وضع تسعيرة واحدة") */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-xs font-bold text-white">
+                        {lang === 'ar' ? 'التسعيرة الموحدة لجميع الروابط المرفوعة:' : '统一设定整批素材价格：'}
+                      </h4>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {lang === 'ar' ? 'ستطبق هذه الأسعار على كل الهدايا المنشورة دفعة واحدة' : '该定价将统一应用于本批次所有素材'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                        {lang === 'ar' ? 'السعر العادي الموحد ($ / ريال)' : '统一常规价格 (CNY)'} *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={bulkPrice}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setBulkPrice(val);
+                          setBulkVipPrice(Math.max(1, Math.round(val * 0.65)));
+                          setBulkExclusivePrice(Math.round(val * 4.5));
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-purple-300 mb-1.5">
+                        {lang === 'ar' ? 'سعر VIP الموحد (تلقائي)' : '统一VIP专属价'}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={bulkVipPrice}
+                        onChange={(e) => setBulkVipPrice(Number(e.target.value))}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-purple-500/40 text-sm font-bold text-purple-200 focus:outline-none focus:border-purple-400 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-amber-300 mb-1.5">
+                        {lang === 'ar' ? 'السعر الحصري الموحد (تلقائي)' : '统一独家授权价'}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={bulkExclusivePrice}
+                        onChange={(e) => setBulkExclusivePrice(Number(e.target.value))}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-amber-500/40 text-sm font-bold text-amber-200 focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick price presets */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-[11px] text-slate-400">{lang === 'ar' ? 'تسعيرات سريعة جاهزة:' : '快速套用：'}</span>
+                    {[25, 35, 49, 69, 99].map((pVal) => (
+                      <button
+                        key={pVal}
+                        type="button"
+                        onClick={() => {
+                          setBulkPrice(pVal);
+                          setBulkVipPrice(Math.max(1, Math.round(pVal * 0.65)));
+                          setBulkExclusivePrice(Math.round(pVal * 4.5));
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition-colors ${
+                          bulkPrice === pVal
+                            ? 'bg-emerald-500 text-slate-950 font-black'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        {pVal} $
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Batch Options (Category, Theme, Title Prefix, Effect Type) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {lang === 'ar' ? 'القسم / التصنيف الموحد' : '统一分类'}
+                    </label>
+                    <select
+                      value={bulkCategory}
+                      onChange={(e) => setBulkCategory(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="general">{lang === 'ar' ? 'القسم العام (الأساسي)' : '通用分类'}</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {lang === 'ar' ? 'بادئة الاسم (Prefix)' : '统一名称前缀'}
+                    </label>
+                    <input
+                      type="text"
+                      value={bulkTitlePrefix}
+                      onChange={(e) => setBulkTitlePrefix(e.target.value)}
+                      placeholder="مثال: مؤثر لايف / تصميم VIP"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {lang === 'ar' ? 'الثيم / الطابع' : '主题标签'}
+                    </label>
+                    <input
+                      type="text"
+                      value={bulkTheme}
+                      onChange={(e) => setBulkTheme(e.target.value)}
+                      placeholder="مثال: مؤثرات VIP / حصرية"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      {lang === 'ar' ? 'نوع المؤثر الموحد' : '动效类型'}
+                    </label>
+                    <select
+                      value={bulkEffectType}
+                      onChange={(e) => setBulkEffectType(e.target.value as '2D' | '3D')}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="2D">2D (ثنائي الأبعاد)</option>
+                      <option value="3D">3D (ثلاثي الأبعاد)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Progress Indicator when uploading */}
+                {isBulkUploading && bulkProgress && (
+                  <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-500/50 space-y-2 animate-pulse">
+                    <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                        <span>{lang === 'ar' ? 'جاري الرفع التلقائي للهدايا ونشرها في المتجر...' : '正在自动批量发布与导入...'}</span>
+                      </span>
+                      <span className="font-mono text-white text-sm">
+                        {bulkProgress.current} / {bulkProgress.total} ({Math.round((bulkProgress.current / bulkProgress.total) * 100)}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                        style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Submit Button */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                  <div className="text-xs text-slate-400">
+                    <span>
+                      {lang === 'ar'
+                        ? 'سيتم ربط جميع الهدايا تلقائياً برقم الواتساب الخاص بك، وستبقى في نفس الصفحة للمتابعة.'
+                        : '所有素材将自动绑定您的官方WhatsApp，发布后停留在当前页面。'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isBulkUploading || parsedBulkLinks.length === 0}
+                    className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-40 disabled:pointer-events-none text-white font-extrabold text-sm shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer"
+                  >
+                    {isBulkUploading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>{lang === 'ar' ? 'جاري الرفع التلقائي...' : '正在上传...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-5 h-5" />
+                        <span>
+                          {lang === 'ar'
+                            ? `🚀 رفع ونشر الـ (${parsedBulkLinks.length}) هدية تلقائياً دفعة واحدة`
+                            : `🚀 一键自动批量发布 (${parsedBulkLinks.length}) 件礼物`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Uploaded Summary Section (Stays right here!) */}
+              {bulkSuccessList.length > 0 && (
+                <div className="mt-6 p-5 rounded-2xl bg-slate-900/90 border border-emerald-500/40 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <h4 className="text-sm font-bold text-white">
+                        {lang === 'ar'
+                          ? `✓ تم رفع ونشر ${bulkSuccessList.length} هدية بنجاح في المتجر!`
+                          : `✓ 成功批量发布 ${bulkSuccessList.length} 件礼物素材！`}
+                      </h4>
+                    </div>
+                    <span className="text-[11px] text-emerald-400 font-mono">
+                      {lang === 'ar' ? 'تمت إضافة جميع العناصر للمتجر فورياً' : '已即时同步至全站'}
+                    </span>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                    {bulkSuccessList.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs gap-3"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-[10px] font-mono text-cyan-400 font-bold shrink-0">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-bold text-white truncate">
+                            {item.title}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono shrink-0">
+                            {item.price} $
+                          </span>
+                        </div>
+                        <a
+                          href={item.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-cyan-400 hover:text-cyan-300 shrink-0 flex items-center gap-1 font-mono"
+                        >
+                          <span>{lang === 'ar' ? 'رابط الميديا' : '链接'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Main Form Fields */}
             <div className="lg:col-span-8 bg-[#111520] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-5">
@@ -2857,134 +3469,428 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         </div>
-      </div>
       )}
+    </div>
+  )}
 
       {/* TAB 2: ACTIVE GIFTS LIST */}
       {activeTab === 'list' && (
-        <div className="bg-[#111520] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-          {/* Search in List and Action Buttons */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="relative max-w-sm w-full">
+        <div className="bg-[#111520] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-6">
+          {/* 1. GIFTS PER PAGE CONTROL & STOREFRONT PAGINATION SETTING */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/40 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-purple-500/20 border border-purple-400/50 flex items-center justify-center text-purple-300 shrink-0 shadow-md">
+                <SlidersHorizontal className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-black text-white">
+                    {lang === 'ar' ? 'التحكم في عدد الهدايا لكل صفحة في المتجر (Gifts Per Page)' : '全站商城每页展示数量设定'}
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                    {lang === 'ar' ? 'تحكم فوري مباشر' : 'Live Sync'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {lang === 'ar'
+                    ? `إجمالي الهدايا (${gifts.length}) هدية — يتم تقسيمها وتوزيعها في المتجر تلقائياً بناءً على الرقم الذي تحدده هنا.`
+                    : `全站当前共有 (${gifts.length}) 件礼物素材，将根据您设置的数量自动精确分页。`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center">
+              <div className="flex items-center gap-2 bg-slate-950/90 px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-inner">
+                <span className="text-xs text-slate-400 font-bold">{lang === 'ar' ? 'كل صفحة:' : '每页:'}</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={customGiftsPerPage}
+                  onChange={(e) => setCustomGiftsPerPage(Math.max(1, Number(e.target.value)))}
+                  className="w-16 px-2 py-1 rounded-lg bg-slate-900 border border-purple-500/60 text-white font-mono font-black text-center text-sm focus:outline-none focus:border-purple-400"
+                />
+                <span className="text-xs text-slate-400 font-bold">{lang === 'ar' ? 'هدية' : '件'}</span>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+                {[10, 20, 26, 30, 50].map((presetVal) => (
+                  <button
+                    key={presetVal}
+                    type="button"
+                    onClick={() => setCustomGiftsPerPage(presetVal)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                      customGiftsPerPage === presetVal
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 font-black'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                    title={lang === 'ar' ? `ضبط ${presetVal} هدية بالصفحة` : `设为 ${presetVal} 件`}
+                  >
+                    {presetVal}
+                  </button>
+                ))}
+              </div>
+
+              {/* Save Button */}
+              <button
+                type="button"
+                onClick={handleSaveGiftsPerPage}
+                disabled={isSavingGiftsPerPage}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>{lang === 'ar' ? 'حفظ وتطبيق فوراً' : '保存生效'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. SEARCH, VIEW MODE SELECTOR, AND ACTION BUTTONS */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            {/* Search Input */}
+            <div className="relative max-w-md w-full">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder={lang === 'ar' ? 'بحث في الهدايا...' : '搜索礼物...'}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
+                placeholder={lang === 'ar' ? 'بحث بالاسم، الرقم التسلسلي، التصنيف...' : '搜索礼物名称、编号、分类...'}
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500 transition-colors shadow-inner"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {/* DELETE ALL UPLOADED PRODUCTS BUTTON (زر حذف جميع المنتجات المرفوعة) */}
+            {/* View Mode & Management Actions */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* VIEW SWITCHER: LARGE CARDS (GRID) VS COMPACT TABLE */}
+              <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setListDisplayMode('grid')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    listDisplayMode === 'grid'
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={lang === 'ar' ? 'عرض البطاقات الكبيرة المريحة للعين' : '大图卡片视图'}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'بطاقات كبيرة (مريح للعين)' : '大卡片'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setListDisplayMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    listDisplayMode === 'table'
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={lang === 'ar' ? 'عرض الجدول المضغوط' : '表格视图'}
+                >
+                  <List className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'جدول' : '表格'}</span>
+                </button>
+              </div>
+
+              {/* PURGE DUMMY GIFTS BUTTON */}
+              <button
+                type="button"
+                onClick={handlePurgeDummyGifts}
+                className="px-3 py-2 rounded-xl bg-amber-950/60 hover:bg-amber-900 text-amber-300 hover:text-white text-xs font-bold border border-amber-700/60 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                title={lang === 'ar' ? 'فحص وحذف أي هدايا وهمية أو تجريبية' : '清理测试礼物'}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>{lang === 'ar' ? 'تنظيف الهدايا الوهمية' : '清理测试'}</span>
+              </button>
+
+              {/* DELETE ALL UPLOADED PRODUCTS BUTTON */}
               <button
                 type="button"
                 disabled={isDeletingAll || gifts.length === 0}
                 onClick={() => setIsDeleteAllModalOpen(true)}
                 className="px-3.5 py-2 rounded-xl bg-red-950/70 hover:bg-red-900 text-red-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none text-xs font-bold border border-red-800/80 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
-                title={lang === 'ar' ? 'حذف جميع المنتجات المرفوعة نهائياً' : '清空并删除所有已上传产品'}
+                title={lang === 'ar' ? 'حذف جميع المنتجات المرفوعة نهائياً' : '清空所有产品'}
               >
                 <Trash2 className="w-3.5 h-3.5 text-red-400" />
                 <span>
-                  {lang === 'ar' ? `حذف جميع المنتجات المرفوعة (${gifts.length})` : `清空所有产品 (${gifts.length})`}
+                  {lang === 'ar' ? `حذف الكل (${gifts.length})` : `清空 (${gifts.length})`}
                 </span>
               </button>
 
+              {/* ADD NEW GIFT BUTTON */}
               <button
                 onClick={() => {
                   setEditingId(null);
                   setActiveTab('create');
                 }}
-                className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/25 active:scale-95"
               >
-                <PlusCircle className="w-3.5 h-3.5" />
+                <PlusCircle className="w-4 h-4" />
                 <span>{t.addNewGift}</span>
               </button>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] font-mono border-b border-slate-800">
-                <tr>
-                  <th className="p-3">ID / 封面</th>
-                  <th className="p-3">{lang === 'ar' ? 'اسم الهدية' : '礼物名称'}</th>
-                  <th className="p-3">{lang === 'ar' ? 'السعر' : '价格 (CNY)'}</th>
-                  <th className="p-3">{lang === 'ar' ? 'التصنيف' : '分类/维度'}</th>
-                  <th className="p-3">{lang === 'ar' ? 'الصيغ' : '包含格式'}</th>
-                  <th className="p-3">{lang === 'ar' ? 'التحميلات' : '下载量'}</th>
-                  <th className="p-3 text-right">{lang === 'ar' ? 'الإجراءات' : '操作'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {filteredGifts.map((g) => (
-                  <tr key={g.id} className="hover:bg-slate-900/50 transition-colors">
-                    <td className="p-3">
-                      <div className="flex items-center gap-2.5">
-                        {g.posterUrl ? (
-                          <img
-                            src={g.posterUrl}
-                            alt={g.title}
-                            className="w-10 h-10 rounded-lg object-cover border border-slate-700"
-                          />
+          {/* 3. MAIN GIFTS CONTENT AREA */}
+          {filteredGifts.length === 0 ? (
+            <div className="py-20 text-center text-slate-500 space-y-3">
+              <p className="text-sm">
+                {lang === 'ar' ? 'لا توجد هدايا تطابق البحث' : '未找到匹配的礼物素材'}
+              </p>
+            </div>
+          ) : listDisplayMode === 'grid' ? (
+            /* ============================================================ */
+            /* LARGE CARD GRID VIEW (بشكل كبير جداً وصفوف مريحة للعين)       */
+            /* ============================================================ */
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 sm:gap-6">
+              {filteredGifts.map((g, idx) => (
+                <div
+                  key={g.id}
+                  className="group relative flex flex-col rounded-2xl sm:rounded-3xl bg-[#0c1017] border border-slate-800/90 hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-950/40 transition-all duration-300 overflow-hidden"
+                >
+                  {/* Large High-Definition Media Preview Area */}
+                  <div className="relative w-full h-64 sm:h-72 bg-slate-950 flex items-center justify-center overflow-hidden">
+                    {g.posterUrl ? (
+                      <img
+                        src={g.posterUrl}
+                        alt={g.title}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      />
+                    ) : g.videoUrl ? (
+                      <video
+                        src={`${g.videoUrl}#t=0.001`}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 bg-slate-900/50">
+                        <Video className="w-10 h-10 mb-2 opacity-40 text-cyan-400" />
+                        <span className="text-xs">{lang === 'ar' ? 'لا يوجد استعراض' : '无预览'}</span>
+                      </div>
+                    )}
+
+                    {/* Gradient Overlay for Top Badges */}
+                    <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none" />
+
+                    {/* Top Right: ID Badge */}
+                    <span className="absolute top-3 right-3 bg-black/80 backdrop-blur-md border border-cyan-500/40 text-cyan-300 font-mono font-bold text-xs px-2.5 py-1 rounded-xl shadow-lg">
+                      {g.id}
+                    </span>
+
+                    {/* Top Left: Price Badge */}
+                    <span className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-xl shadow-lg flex items-center gap-1">
+                      <span>¥ {g.price}</span>
+                    </span>
+
+                    {/* Bottom Left: Category & Effect Type Badge */}
+                    <span className="absolute bottom-3 left-3 bg-black/75 backdrop-blur-md border border-slate-700/80 text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded-lg">
+                      {g.category} · {g.effectType}
+                    </span>
+
+                    {/* Hover Center Overlay: Quick Preview Button */}
+                    <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-2 backdrop-blur-xs">
+                      <button
+                        type="button"
+                        onClick={() => onPreviewGift(g)}
+                        className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs shadow-xl shadow-cyan-500/40 flex items-center gap-1.5 transition-all transform scale-90 group-hover:scale-100 cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>{lang === 'ar' ? 'معاينة بالحجم الكامل' : '全屏大图预览'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Content & Details Area */}
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3.5 bg-gradient-to-b from-[#0c1017] to-[#111520]">
+                    <div>
+                      {/* Primary & Arabic Title */}
+                      <h3 className="text-base sm:text-lg font-black text-white tracking-tight line-clamp-1 mb-1">
+                        {g.title}
+                      </h3>
+                      {g.titleAr && (
+                        <p className="text-xs sm:text-sm text-slate-300 font-medium line-clamp-1">
+                          {g.titleAr}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Formats Pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {g.formats && g.formats.map((f, fIdx) => (
+                        <span
+                          key={fIdx}
+                          className="px-2 py-0.5 rounded-md bg-slate-800/80 text-slate-300 border border-slate-700/60 text-[10px] font-semibold"
+                        >
+                          {f.name.split('带')[0].split('动')[0]}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Price Tiers Info */}
+                    <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/90 flex items-center justify-between text-xs font-mono">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">{lang === 'ar' ? 'سعر VIP' : 'VIP价格'}</span>
+                        <span className="text-purple-300 font-bold">¥ {g.vipPrice || Math.round(g.price * 0.65)}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block">{lang === 'ar' ? 'التحميلات' : '下载次数'}</span>
+                        <span className="text-emerald-400 font-bold">{g.downloadsCount || 0}</span>
+                      </div>
+                    </div>
+
+                    {/* Actions Row: 4 Clear & Comfortable Buttons */}
+                    <div className="grid grid-cols-4 gap-2 pt-1 border-t border-slate-800/80">
+                      {/* Preview Button */}
+                      <button
+                        type="button"
+                        onClick={() => onPreviewGift(g)}
+                        className="py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center justify-center transition-colors cursor-pointer"
+                        title={lang === 'ar' ? 'معاينة الهدية' : '预览'}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+
+                      {/* Edit Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(g)}
+                        className="py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center transition-colors cursor-pointer"
+                        title={lang === 'ar' ? 'تعديل الهدية' : '编辑'}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+
+                      {/* Copy Link Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopyGiftLink(g)}
+                        className="py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center transition-colors cursor-pointer"
+                        title={lang === 'ar' ? 'نسخ رابط الهدية' : '复制直链'}
+                      >
+                        {copiedGiftId === g.id ? (
+                          <Check className="w-4 h-4 text-emerald-400" />
                         ) : (
-                          <div className="w-10 h-10 rounded-lg bg-black border border-cyan-500/40 flex items-center justify-center overflow-hidden">
-                            <video src={g.videoUrl ? `${g.videoUrl}#t=0.001` : undefined} muted playsInline className="w-full h-full object-cover" />
-                          </div>
+                          <Copy className="w-4 h-4" />
                         )}
-                        <span className="font-mono text-cyan-400 text-[11px]">{g.id}</span>
-                      </div>
-                    </td>
-                    <td className="p-3 font-semibold text-white">
-                      <div>{g.title}</div>
-                      {g.titleAr && <div className="text-[11px] text-slate-400">{g.titleAr}</div>}
-                    </td>
-                    <td className="p-3 font-mono font-bold text-amber-400">
-                      ¥ {g.price}
-                    </td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">
-                        {g.category} · {g.effectType}
-                      </span>
-                    </td>
-                    <td className="p-3 text-[11px] text-slate-400">
-                      {g.formats.map((f) => f.name.split('动')[0]).join(', ')}
-                    </td>
-                    <td className="p-3 font-mono text-slate-400">
-                      {g.downloadsCount}
-                    </td>
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => onPreviewGift(g)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-cyan-400"
-                          title="Preview"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleStartEdit(g)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-amber-400"
-                          title="Edit"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteGift(g.id)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-red-400"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGift(g.id)}
+                        className="py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center transition-colors cursor-pointer"
+                        title={lang === 'ar' ? 'حذف الهدية' : '删除'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* ============================================================ */
+            /* COMPACT TABLE VIEW (الجدول المحسن بتفاصيل أوضح)              */
+            /* ============================================================ */
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] font-mono border-b border-slate-800">
+                  <tr>
+                    <th className="p-3.5">ID / 封面</th>
+                    <th className="p-3.5">{lang === 'ar' ? 'اسم الهدية' : '礼物名称'}</th>
+                    <th className="p-3.5">{lang === 'ar' ? 'السعر' : '价格 (CNY)'}</th>
+                    <th className="p-3.5">{lang === 'ar' ? 'التصنيف' : '分类/维度'}</th>
+                    <th className="p-3.5">{lang === 'ar' ? 'الصيغ' : '包含格式'}</th>
+                    <th className="p-3.5">{lang === 'ar' ? 'التحميلات' : '下载量'}</th>
+                    <th className="p-3.5 text-right">{lang === 'ar' ? 'الإجراءات' : '操作'}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredGifts.map((g) => (
+                    <tr key={g.id} className="hover:bg-slate-900/50 transition-colors">
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-3">
+                          {g.posterUrl ? (
+                            <img
+                              src={g.posterUrl}
+                              alt={g.title}
+                              className="w-14 h-14 rounded-xl object-cover border border-slate-700 shadow-md shrink-0 cursor-pointer"
+                              onClick={() => onPreviewGift(g)}
+                            />
+                          ) : (
+                            <div
+                              onClick={() => onPreviewGift(g)}
+                              className="w-14 h-14 rounded-xl bg-black border border-cyan-500/40 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                            >
+                              <video src={g.videoUrl ? `${g.videoUrl}#t=0.001` : undefined} muted playsInline className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          <span className="font-mono text-cyan-400 font-bold text-xs">{g.id}</span>
+                        </div>
+                      </td>
+                      <td className="p-3.5 font-semibold text-white">
+                        <div className="text-sm font-bold">{g.title}</div>
+                        {g.titleAr && <div className="text-xs text-slate-400 mt-0.5">{g.titleAr}</div>}
+                      </td>
+                      <td className="p-3.5 font-mono font-bold text-amber-400 text-sm">
+                        ¥ {g.price}
+                      </td>
+                      <td className="p-3.5">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">
+                          {g.category} · {g.effectType}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-xs text-slate-400">
+                        {g.formats.map((f) => f.name.split('动')[0]).join(', ')}
+                      </td>
+                      <td className="p-3.5 font-mono text-slate-400 text-xs">
+                        {g.downloadsCount}
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onPreviewGift(g)}
+                            className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-colors"
+                            title={lang === 'ar' ? 'معاينة' : 'Preview'}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleStartEdit(g)}
+                            className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors"
+                            title={lang === 'ar' ? 'تعديل' : 'Edit'}
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleCopyGiftLink(g)}
+                            className="p-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors"
+                            title={lang === 'ar' ? 'نسخ الرابط' : 'Copy'}
+                          >
+                            {copiedGiftId === g.id ? (
+                              <Check className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGift(g.id)}
+                            className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                            title={lang === 'ar' ? 'حذف' : 'Delete'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -4141,7 +5047,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 flex items-center gap-2"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{t.saveProfileAndUpload}</span>
+                  <span>{lang === 'ar' ? 'حفظ الملف الشخصي والمتابعة' : '保存资料并继续'}</span>
                 </button>
               </div>
             </form>
