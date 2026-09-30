@@ -143,7 +143,7 @@ export const VipCenterTab: React.FC<VipCenterTabProps> = ({
       await updateDoc(doc(db, 'users', targetUser.id), updateData);
 
       // Update local state
-      setUsers(prev => prev.map(u => u.id === targetUser.id ? ({ ...u, ...updateData } as UserRecord) : u));
+      setUsers(prev => prev.map(u => u.id === targetUser.id ? ({ ...u, ...updateData } as unknown as UserRecord) : u));
 
       const durationArabic = selectedDuration === 'month' ? 'شهر واحد' : selectedDuration === '3months' ? '3 أشهر' : selectedDuration === 'year' ? 'سنة كاملة' : 'دائم مدى الحياة';
       setActionSuccessMsg(`تم تفعيل اشتراك VIP الملكي بنجاح للمستخدم: ${targetUser.name || targetUser.email} (المدة: ${durationArabic})`);

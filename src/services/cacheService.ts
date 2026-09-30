@@ -216,6 +216,10 @@ export async function autoCacheUploadedFile(
     // 3. Save Record in Firestore `user_cache`
     const cacheRecord: CacheFileRecord = {
       id: fileId,
+      name: cleanFileName,
+      type: mimeType,
+      hash: sha256,
+      url: downloadUrl,
       userId: user.id,
       userName: user.displayName || user.name || 'مستخدم',
       userEmail: user.email || '',

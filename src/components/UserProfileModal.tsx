@@ -45,9 +45,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ currentUser,
       let expiry = new Date();
       // If user already has a valid subscription, extend it? 
       // For simplicity, we'll just set it from now or extend if current expiry is in future.
-      const currentExpiry = currentUser.subscriptionExpiry?.toDate 
-        ? currentUser.subscriptionExpiry.toDate() 
-        : (currentUser.subscriptionExpiry ? new Date(currentUser.subscriptionExpiry) : new Date());
+      const rawExp = currentUser.subscriptionExpiry as any;
+      const currentExpiry = rawExp?.toDate 
+        ? rawExp.toDate() 
+        : (rawExp ? new Date(rawExp) : new Date());
       
       if (currentExpiry > new Date()) {
         expiry = currentExpiry;

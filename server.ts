@@ -3,7 +3,32 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import { Readable } from 'stream';
+import { Readable, pipeline } from 'stream';
+
+// Handle uncaught exceptions gracefully to prevent stream aborts from crashing the process
+process.on('uncaughtException', (err: any) => {
+  if (
+    err?.code === 'ECONNRESET' ||
+    err?.code === 'EPIPE' ||
+    err?.name === 'AbortError' ||
+    err?.message?.includes('terminated') ||
+    err?.message?.includes('premature')
+  ) {
+    return;
+  }
+  console.error('[Uncaught Exception]', err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  if (
+    reason?.code === 'ECONNRESET' ||
+    reason?.name === 'AbortError' ||
+    reason?.message?.includes('terminated')
+  ) {
+    return;
+  }
+  console.error('[Unhandled Rejection]', reason);
+});
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -113,6 +138,12 @@ app.get('/uploads/:filename', (req: Request, res: Response) => {
     const chunksize = end - start + 1;
     const fileStream = fs.createReadStream(filePath, { start, end });
 
+    fileStream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    });
+
     res.writeHead(206, {
       ...commonHeaders,
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
@@ -120,7 +151,7 @@ app.get('/uploads/:filename', (req: Request, res: Response) => {
       'Content-Type': contentType,
     });
 
-    fileStream.pipe(res);
+    pipeline(fileStream, res, () => {});
   } else {
     res.writeHead(200, {
       ...commonHeaders,
@@ -128,12 +159,25 @@ app.get('/uploads/:filename', (req: Request, res: Response) => {
       'Content-Type': contentType,
     });
 
-    fs.createReadStream(filePath).pipe(res);
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    });
+
+    pipeline(fileStream, res, () => {});
   }
 });
 
 // Proxy Media Endpoint (for external CDN videos & images that block CORS or need page scraping)
 app.get('/api/proxy-media', async (req: Request, res: Response) => {
+  const abortController = new AbortController();
+
+  req.on('close', () => {
+    abortController.abort();
+  });
+
   try {
     let targetUrl = req.query.url as string;
     if (!targetUrl) {
@@ -157,7 +201,10 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       const isDirectFile = /\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)($|\?)/i.test(targetUrl);
       if (!isDirectFile || targetUrl.includes('/downloadf-') || targetUrl.includes('/index.php') || targetUrl.includes('/p_')) {
         try {
-          const pageRes = await fetch(targetUrl, { headers: upstreamHeaders });
+          const pageRes = await fetch(targetUrl, { 
+            headers: upstreamHeaders,
+            signal: abortController.signal
+          });
           if (pageRes.ok) {
             const html = await pageRes.text();
             const matches = html.match(/https?:\/\/[a-z0-9]+\.top4top\.io\/[^\s"'<>]+?\.(mp4|svga|svga2|webm|mov|png|jpg|jpeg|gif|webp)/gi);
@@ -165,8 +212,8 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
               targetUrl = matches[0];
             }
           }
-        } catch (scrapeErr) {
-          console.warn('Could not scrape Top4Top HTML page:', scrapeErr);
+        } catch {
+          // Ignore scraping abort/error
         }
       }
     }
@@ -177,7 +224,10 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
       !/\.(png|jpg|jpeg|gif|webp)($|\?)/i.test(targetUrl)
     ) {
       try {
-        const pageRes = await fetch(targetUrl, { headers: upstreamHeaders });
+        const pageRes = await fetch(targetUrl, { 
+          headers: upstreamHeaders,
+          signal: abortController.signal
+        });
         if (pageRes.ok) {
           const html = await pageRes.text();
           const ogMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
@@ -187,14 +237,28 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
             targetUrl = ogMatch[1];
           }
         }
-      } catch (err) {
-        console.warn('Could not scrape image page:', err);
+      } catch {
+        // Ignore scraping error
       }
     }
 
-    let upstream = await fetch(targetUrl, {
-      headers: upstreamHeaders,
-    });
+    let upstream: globalThis.Response;
+    try {
+      upstream = await fetch(targetUrl, {
+        headers: upstreamHeaders,
+        signal: abortController.signal
+      });
+    } catch {
+      // Retry with neutral headers if abort not triggered
+      if (abortController.signal.aborted) return;
+      upstream = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': '*/*'
+        },
+        signal: abortController.signal
+      });
+    }
 
     // If 403 hotlink protection triggered, retry with neutral headers
     if (upstream.status === 403 || upstream.status === 401) {
@@ -202,12 +266,16 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           'Accept': '*/*'
-        }
+        },
+        signal: abortController.signal
       });
     }
 
     if (!upstream.ok && upstream.status !== 206) {
-      return res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
+      if (!res.headersSent) {
+        return res.status(upstream.status).send(`Upstream error: ${upstream.statusText}`);
+      }
+      return;
     }
 
     let contentType = upstream.headers.get('content-type') || '';
@@ -237,13 +305,28 @@ app.get('/api/proxy-media', async (req: Request, res: Response) => {
     }
 
     if (upstream.body && typeof (Readable as any).fromWeb === 'function') {
-      const nodeStream = (Readable as any).fromWeb(upstream.body);
-      nodeStream.pipe(res);
+      try {
+        const nodeStream = (Readable as any).fromWeb(upstream.body);
+        nodeStream.on('error', () => {
+          // Suppress stream abort error
+        });
+        pipeline(nodeStream, res, () => {});
+      } catch {
+        const arrayBuffer = await upstream.arrayBuffer();
+        if (!res.headersSent) {
+          res.send(Buffer.from(arrayBuffer));
+        }
+      }
     } else {
       const arrayBuffer = await upstream.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
+      if (!res.headersSent) {
+        res.send(Buffer.from(arrayBuffer));
+      }
     }
   } catch (err: any) {
+    if (abortController.signal.aborted || err?.name === 'AbortError' || err?.message?.includes('terminated')) {
+      return;
+    }
     if (!res.headersSent) {
       res.status(500).json({ error: err?.message || 'Proxy request failed' });
     }

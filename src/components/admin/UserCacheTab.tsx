@@ -588,7 +588,7 @@ export const UserCacheTab: React.FC<UserCacheTabProps> = ({ currentUser, users, 
                         {/* Extra dimension / fps info if available */}
                         {(file.dimensions || file.fps) && (
                           <div className="text-[10px] text-slate-500 flex items-center gap-2 pt-0.5 font-mono">
-                            {file.dimensions && <span>{file.dimensions.width}×{file.dimensions.height}px</span>}
+                            {file.dimensions && <span>{typeof file.dimensions === 'object' ? `${(file.dimensions as any).width}×${(file.dimensions as any).height}px` : file.dimensions}</span>}
                             {file.fps && <span>{file.fps} FPS</span>}
                             {file.frames && <span>{file.frames} إطار</span>}
                           </div>

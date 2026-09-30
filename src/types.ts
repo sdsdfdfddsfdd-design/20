@@ -292,7 +292,7 @@ export interface CacheFileRecord {
   userName?: string;
   userEmail?: string;
   sourceFeature?: string;
-  dimensions?: string;
+  dimensions?: any;
   duration?: number;
   storagePath?: string;
   downloadCount?: number;
@@ -351,7 +351,7 @@ export interface UserRecord {
   password?: string;
   plainPassword?: string;
   oldPassword?: string;
-  subscriptionExpiry?: string | number | null;
+  subscriptionExpiry?: any;
   freeAttempts?: number;
   hasCacheAccess?: boolean;
   [key: string]: any;
@@ -360,7 +360,8 @@ export interface UserRecord {
 export interface CacheStats {
   totalFiles: number;
   totalSizeBytes: number;
-  categories: Record<string, number>;
+  categories?: Record<string, number>;
+  categoryCounts?: Record<string, number>;
   activeCacheUsersCount?: number;
   [key: string]: any;
 }
@@ -435,7 +436,18 @@ export interface SVGAFileInfo {
   [key: string]: any;
 }
 
-export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
+export const PlayerStatus = {
+  IDLE: 'idle',
+  LOADING: 'loading',
+  PLAYING: 'playing',
+  PAUSED: 'paused',
+  STOPPED: 'stopped',
+  ERROR: 'error'
+} as const;
+
+export type PlayerStatus = typeof PlayerStatus[keyof typeof PlayerStatus];
+
+export type SubscriptionType = 'none' | 'day' | 'week' | 'month' | '3months' | 'year' | 'lifetime' | string;
 
 export const PRODUCT_CATEGORIES = ['All', 'Intros', 'Alerts', 'Overlays', 'Emotes', 'Badges', 'Audio', 'Transitions'] as const;
 

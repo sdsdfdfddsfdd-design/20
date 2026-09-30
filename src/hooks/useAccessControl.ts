@@ -31,8 +31,9 @@ export const useAccessControl = () => {
 
     // Check subscription
     const now = new Date();
-    const expiry = currentUser.subscriptionExpiry?.toDate?.() || 
-                 (currentUser.subscriptionExpiry instanceof Date ? currentUser.subscriptionExpiry : null);
+    const rawExp = currentUser.subscriptionExpiry as any;
+    const expiry = rawExp?.toDate?.() || 
+                 (rawExp instanceof Date ? rawExp : (typeof rawExp === 'string' || typeof rawExp === 'number' ? new Date(rawExp) : null));
     
     const isSubscribed = expiry && expiry > now;
 

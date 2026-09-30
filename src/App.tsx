@@ -19,7 +19,7 @@ import { SupportModal } from './components/SupportModal';
 import { VipModal } from './components/VipModal';
 import { SiteSettingsModal } from './components/SiteSettingsModal';
 import { Footer } from './components/Footer';
-import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery } from './lib/firebaseService';
+import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery, purgeDummyGifts, isDummyGift } from './lib/firebaseService';
 
 export default function App() {
   // Language (Default to Arabic with instant RTL toggle)
@@ -35,11 +35,14 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'store' | 'dashboard'>('store');
 
   // Gifts State with Firebase persistence
-  const [gifts, setGifts] = useState<GiftItem[]>(INITIAL_GIFTS);
+  const [gifts, setGifts] = useState<GiftItem[]>(() => INITIAL_GIFTS.filter(g => !isDummyGift(g)));
 
   useEffect(() => {
+    // Purge any dummy test gifts immediately on app mount
+    purgeDummyGifts().catch(() => {});
+
     const unsubscribe = subscribeToGifts((newGifts) => {
-      setGifts(newGifts);
+      setGifts(newGifts.filter(g => !isDummyGift(g)));
     });
     return () => unsubscribe();
   }, []);
@@ -481,8 +484,8 @@ ID الحساب: ${user.id}` : ''}
               </div>
             ) : (
               <>
-                {/* Cards Grid: 2 columns on mobile, expanding smoothly across tablet, laptop, and desktop (Strictly 26 per page) */}
-                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5 lg:gap-4.5 mt-2">
+                {/* Cards Grid: Large, spacious side-by-side rows comfortable for visual inspection */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 sm:gap-4.5 md:gap-5 lg:gap-6 mt-3">
                   {paginatedGifts.map((gift) => (
                     <GiftCard
                       key={gift.id}

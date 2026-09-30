@@ -461,10 +461,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('quick')}
+                  onClick={() => setActiveTab('register')}
                   className="text-cyan-400 hover:underline"
                 >
-                  نسيت كلمة المرور؟
+                  إنشاء حساب جديد
                 </button>
               </div>
 

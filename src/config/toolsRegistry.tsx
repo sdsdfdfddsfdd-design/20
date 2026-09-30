@@ -14,7 +14,7 @@ export interface ToolRegistryItem {
   icon: React.ReactNode;
   category: ToolCategory;
   categoryNameAr: string;
-  actionKey: keyof HeaderProps;
+  actionKey: string;
   dashboardActionKey: string;
   featureAccessKey: string;
   descAr: string;

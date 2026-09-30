@@ -297,7 +297,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     try {
       setIsSavingGiftsPerPage(true);
       const updated: SiteSettings = {
-        ...(propSiteSettings || DEFAULT_SITE_SETTINGS),
+        ...(propSiteSettings || { siteName: 'Destroy KING Designer', primaryPhone: '+923400700013', whatsapp: '+923400700013' }),
         giftsPerPage: Math.max(1, customGiftsPerPage)
       };
       await saveSiteSettings(updated);
@@ -1804,10 +1804,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium">{t.activeStaffTitle}:</span>
+                  <span className="text-xs text-slate-400 font-medium">{lang === 'ar' ? 'المصمم / المشرف النشط:' : 'Active Staff:'}</span>
                   <span className="text-sm font-black text-white">{activeStaff.name}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
-                    {activeStaff.role === 'admin' ? t.adminRole : t.designerRole}
+                    {activeStaff.role === 'admin' ? (lang === 'ar' ? 'مسؤول / أدمن' : 'Admin') : (lang === 'ar' ? 'مصمم معتمد' : 'Designer')}
                   </span>
 
                   {/* Account Status Badge */}
@@ -1839,7 +1839,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {activeStaff.isProfileCompleted ? (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-semibold">
                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      <span>{t.profileCompleted}</span>
+                      <span>{lang === 'ar' ? 'الملف مكتمل' : 'Profile Complete'}</span>
                     </span>
                   ) : (
                     <button
@@ -1847,7 +1847,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 font-semibold animate-pulse hover:bg-amber-500/30"
                     >
                       <AlertCircle className="w-3 h-3 text-amber-400" />
-                      <span>{t.completeProfileNow}</span>
+                      <span>{lang === 'ar' ? 'أكمل ملفك الآن' : 'Complete Profile'}</span>
                     </button>
                   )}
                 </div>
@@ -1855,7 +1855,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40">
                     <MessageCircle className="w-4 h-4 text-emerald-400" />
-                    <span className="text-slate-300 font-medium">{t.whatsappNumber}:</span>
+                    <span className="text-slate-300 font-medium">{lang === 'ar' ? 'رقم الواتساب:' : 'WhatsApp:'}</span>
                     <span className="font-mono text-emerald-300 font-extrabold dir-ltr text-xs tracking-wider">
                       {activeStaff.whatsapp || (lang === 'ar' ? 'لم يحدد بعد' : 'Not set')}
                     </span>
@@ -1870,15 +1870,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 transition-colors"
-                      title={t.whatsappChat}
+                      title={lang === 'ar' ? 'محادثة واتساب' : 'WhatsApp'}
                     >
                       <MessageCircle className="w-3 h-3 text-emerald-400" />
-                      <span>{t.whatsappChat}</span>
+                      <span>{lang === 'ar' ? 'محادثة واتساب' : 'WhatsApp'}</span>
                     </a>
                   )}
 
                   <span className="text-slate-500 text-[11px]">|</span>
-                  <span className="text-slate-400 text-[11px]">{t.uploadedGifts}: <strong className="text-cyan-300 font-bold">{activeStaff.giftsCount || 0}</strong></span>
+                  <span className="text-slate-400 text-[11px]">{lang === 'ar' ? 'الهدايا المرفوعة' : 'Uploaded Gifts'}: <strong className="text-cyan-300 font-bold">{activeStaff.giftsCount || 0}</strong></span>
                 </div>
 
                 <div className="flex items-center gap-2 text-[11px] text-slate-400">
@@ -1899,7 +1899,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-colors flex items-center gap-1.5 shadow"
               >
                 <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{t.editProfileBtn}</span>
+                <span>{lang === 'ar' ? 'تعديل الملف' : 'Edit Profile'}</span>
               </button>
               <button
                 type="button"
@@ -1907,7 +1907,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600/30 to-cyan-600/30 hover:from-blue-600/40 hover:to-cyan-600/40 text-cyan-300 text-xs font-semibold border border-cyan-500/50 transition-all flex items-center gap-1.5 shadow"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>{t.switchStaffBtn}</span>
+                <span>{lang === 'ar' ? 'تبديل الحساب' : 'Switch Staff'}</span>
               </button>
             </div>
           </div>
@@ -4327,7 +4327,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <form onSubmit={handleCreateStaff} className="space-y-4 text-xs">
                   <div>
                     <label className="block text-slate-300 font-bold mb-1">
-                      {t.fullName} *
+                      {lang === 'ar' ? 'الاسم الكامل أو اسم العرض' : 'Full Name'} *
                     </label>
                     <input
                       type="text"
@@ -4343,7 +4343,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
                         <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{t.whatsappNumber} *</span>
+                        <span>{lang === 'ar' ? 'رقم الواتساب الخاص بالموظف' : 'Employee WhatsApp'} *</span>
                       </span>
                       <span className="text-[10px] text-cyan-400 font-normal">
                         {lang === 'ar' ? 'اختر الدولة وأدخل الرقم' : 'Select country & enter phone'}
@@ -4360,7 +4360,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-slate-300 font-bold mb-1">
-                        {t.staffRole}
+                        {lang === 'ar' ? 'الوظيفة / الصلاحيات' : 'Role / Permissions'}
                       </label>
                       <select
                         value={newStaffRole}
@@ -4368,9 +4368,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
                       >
                         <option value="buyer">{lang === 'ar' ? 'مستخدم / مشتري' : 'Buyer'}</option>
-                        <option value="designer">{t.designerRole}</option>
+                        <option value="designer">{lang === 'ar' ? 'مصمم (Designer)' : 'Designer'}</option>
                         <option value="employee">{lang === 'ar' ? 'موظف / مشرف' : 'Employee'}</option>
-                        {isSuperAdmin && <option value="admin">{t.adminRole}</option>}
+                        {isSuperAdmin && <option value="admin">{lang === 'ar' ? 'مسؤول / أدمن (Admin)' : 'Admin'}</option>}
                       </select>
                     </div>
 
@@ -4500,7 +4500,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   <div>
                     <label className="block text-slate-300 font-bold mb-1">
-                      {t.bioSpecialty}
+                      {lang === 'ar' ? 'التخصص أو النبذة التعريفية:' : '擅长领域/简介:'}
                     </label>
                     <input
                       type="text"
@@ -4527,7 +4527,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="flex items-center gap-2">
                     <Layers className="w-4 h-4 text-cyan-400" />
                     <h3 className="text-sm font-bold text-white">
-                      {lang === 'ar' ? 'قائمة الحسابات والصلاحيات' : t.staffList} ({filteredStaffList.length})
+                      {lang === 'ar' ? 'قائمة الحسابات والصلاحيات' : 'Staff List'} ({filteredStaffList.length})
                     </h3>
                   </div>
 
@@ -4631,8 +4631,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       value={emp.role}
                                       onChange={(e) => {
                                         const newRole = e.target.value as UserRole;
-                                        // Find if we need to call an API to update the role
-                                        // Use the new changeEmployeeRole function
                                         changeEmployeeRole(emp, newRole).then(() => {
                                           setStaffList((prev) => prev.map((u) => u.id === emp.id ? { ...u, role: newRole } : u));
                                           setSuccessMessage(lang === 'ar' ? `تم تغيير وظيفة/صلاحيات ${emp.name} بنجاح` : 'Role updated successfully');
@@ -4645,9 +4643,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       title={lang === 'ar' ? 'تغيير الوظيفة والصلاحيات' : 'Change Role'}
                                     >
                                       <option value="buyer">{lang === 'ar' ? 'مستخدم عادي / مشتري' : 'Buyer'}</option>
-                                      <option value="designer">{t.designerRole}</option>
+                                      <option value="designer">{lang === 'ar' ? 'مصمم معتمد' : 'Designer'}</option>
                                       <option value="employee">{lang === 'ar' ? 'موظف' : 'Employee'}</option>
-                                      {isSuperAdmin && <option value="admin">{t.adminRole}</option>}
+                                      {isSuperAdmin && <option value="admin">{lang === 'ar' ? 'مدير نظام' : 'Admin'}</option>}
                                     </select>
 
                                     {/* Active Account Status Badge */}
@@ -4685,7 +4683,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="ml-1 text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1"
-                                          title={t.whatsappChat}
+                                          title={lang === 'ar' ? 'محادثة واتساب' : 'WhatsApp'}
                                         >
                                           <span>واتساب</span>
                                           <ExternalLink className="w-2.5 h-2.5" />
@@ -4703,7 +4701,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     </div>
 
                                     <span>•</span>
-                                    <span>{t.uploadedGifts}: <strong className="text-white">{emp.giftsCount || 0}</strong></span>
+                                    <span>{lang === 'ar' ? 'الهدايا المرفوعة' : 'Uploaded Gifts'}: <strong className="text-white">{emp.giftsCount || 0}</strong></span>
                                   </div>
                                 </div>
                               </div>
@@ -4869,7 +4867,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     type="button"
                                     onClick={() => handleDeleteStaff(emp.id, emp.role)}
                                     className="p-1.5 rounded-xl hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-colors cursor-pointer"
-                                    title={t.deleteStaffBtn}
+                                    title={lang === 'ar' ? 'حذف الحساب' : 'Delete'}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -4912,7 +4910,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <h3 className="text-base font-black text-white">
                     {editingStaffTarget && editingStaffTarget.id !== activeStaff?.id
                       ? (lang === 'ar' ? `تعديل بيانات ورقم ${editingStaffTarget.name}` : `Edit ${editingStaffTarget.name}`)
-                      : t.firstTimeProfileTitle}
+                      : (lang === 'ar' ? 'إعداد ملف المصمم ورقم الواتساب' : 'Designer Profile Setup')}
                   </h3>
                   <p className="text-[11px] text-cyan-300 font-semibold">
                     {editingStaffTarget && editingStaffTarget.id !== activeStaff?.id
@@ -4945,7 +4943,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <p className="text-[11px] text-slate-300">
                 {lang === 'ar' 
                   ? 'اختر كود دولتك من القائمة وأدخل رقمك؛ بمجرد التأكيد سيقوم النظام فوراً بتحديث رقم التواصل على جميع هداياك المعروضة في المتجر للعملاء.'
-                  : t.firstTimeProfileDesc}
+                  : (lang === 'en' ? 'Select country code & enter WhatsApp number to sync across gifts.' : '只需填写一次，后续自动关联')}
               </p>
             </div>
 
@@ -4953,7 +4951,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <form onSubmit={handleSaveProfile} className="space-y-4">
               <div>
                 <label className="block text-slate-300 font-bold mb-1">
-                  {t.fullName} *
+                  {lang === 'ar' ? 'الاسم الكامل أو اسم الاستوديو' : 'Full Name'} *
                 </label>
                 <input
                   type="text"
@@ -4969,7 +4967,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{t.whatsappNumber} *</span>
+                    <span>{lang === 'ar' ? 'رقم الواتساب للتواصل' : 'WhatsApp Number'} *</span>
                   </span>
                   <span className="text-[10px] text-cyan-400 font-normal">
                     {lang === 'ar' ? 'اختر كود دولتك وأدخل رقمك' : 'Select country code & enter phone'}
@@ -4993,7 +4991,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-bold mb-1">
-                  {t.bioSpecialty}
+                  {lang === 'ar' ? 'التخصص أو النبذة التعريفية:' : '擅长领域/简介:'}
                 </label>
                 <input
                   type="text"

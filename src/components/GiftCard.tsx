@@ -224,46 +224,46 @@ export const GiftCard: React.FC<GiftCardProps> = ({
       </div>
 
       {/* 2. Content Info Section (Matching Reference D.png) */}
-      <div className="p-2 sm:p-3 pt-2 sm:pt-2.5 flex flex-col gap-1 sm:gap-1.5 bg-[#0c1017] min-w-0">
+      <div className="p-3 sm:p-4 pt-2.5 sm:pt-3 flex flex-col gap-1.5 sm:gap-2 bg-[#0c1017] min-w-0">
         {/* Title & Price Row */}
-        <div className="flex items-start justify-between gap-1 sm:gap-1.5 min-w-0">
-          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300 transition-colors truncate leading-snug">
+        <div className="flex items-start justify-between gap-1.5 sm:gap-2 min-w-0">
+          <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors truncate leading-snug">
             {displayTitle}
           </h3>
-          <span className="text-emerald-400 font-extrabold text-[11px] sm:text-xs md:text-sm whitespace-nowrap shrink-0">
-            ¥ {gift.price} <span className="text-[9px] sm:text-[10px] text-emerald-300/80 font-semibold">CNY</span>
+          <span className="text-emerald-400 font-black text-xs sm:text-sm md:text-base whitespace-nowrap shrink-0 font-mono">
+            $ {gift.price} <span className="text-[10px] sm:text-[11px] text-emerald-300/80 font-bold font-sans">USD</span>
           </span>
         </div>
 
         {/* Tags Row: [海外/حصري] [座驾/هدية] [2D/3D] */}
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap min-w-0">
-          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-pink-950/70 text-pink-300 border border-pink-500/30 shadow-xs">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-pink-950/70 text-pink-300 border border-pink-500/40 shadow-xs">
             {overseasTag}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700/60">
+          <span className="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-slate-800/90 text-slate-300 border border-slate-700/60">
             {categoryTag}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono text-slate-300 bg-slate-800/90 border border-slate-700/60">
+          <span className="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/40 font-bold">
             {effectTag}
           </span>
         </div>
 
         {/* Serial Number & Duration Line: NO.273806 | *** | 时长: 7S */}
-        <div className="flex items-center justify-between text-[9px] sm:text-[10px] text-slate-500 font-mono tracking-tight pt-0.5 min-w-0">
-          <span className="text-slate-400 font-medium truncate">{serialNo}</span>
+        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono tracking-tight pt-1 min-w-0 border-t border-slate-800/50">
+          <span className="text-cyan-400/90 font-bold truncate">{serialNo}</span>
           <span className="mx-1 text-slate-700">|</span>
-          <span className="text-slate-400 whitespace-nowrap shrink-0">{lang === 'ar' ? `المدة: ${durationSec}ث` : lang === 'en' ? `${durationSec}s` : `时长:${durationSec}S`}</span>
+          <span className="text-slate-400 whitespace-nowrap shrink-0">{lang === 'ar' ? `المدة: ${durationSec} ثانية` : lang === 'en' ? `${durationSec}s` : `时长:${durationSec}S`}</span>
         </div>
 
         {/* Studio / Creator Footer Line: Avatar + Studio Name */}
-        <div className="flex items-center gap-1.5 pt-1.5 mt-0.5 border-t border-slate-800/60 text-[10px] sm:text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors min-w-0">
+        <div className="flex items-center gap-2 pt-2 mt-0.5 border-t border-slate-800/80 text-xs text-slate-400 group-hover:text-slate-200 transition-colors min-w-0">
           <img
             src={authorAvatar}
             alt={authorName}
-            className="w-4 h-4 rounded-full object-cover border border-slate-700 shrink-0"
+            className="w-5 h-5 rounded-full object-cover border border-slate-700 shrink-0"
             loading="lazy"
           />
-          <span className="truncate font-medium text-[10px] sm:text-[11px] text-slate-300 group-hover:text-white">
+          <span className="truncate font-semibold text-[11px] sm:text-xs text-slate-300 group-hover:text-white">
             {authorName}
           </span>
         </div>
