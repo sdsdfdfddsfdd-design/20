@@ -3,12 +3,15 @@
  * Handles persistent server file storage via /api/upload and IndexedDB caching for offline resilience.
  */
 
-const DB_NAME = 'jiawei_media_vault';
-const DB_VERSION = 1;
-const STORE_NAME = 'media_blobs';
+export const DB_NAME = 'jiawei_media_vault';
+export const DB_VERSION = 1;
+export const STORE_NAME = 'media_blobs';
+
+// Global in-memory cache map to hold synchronous Object URLs
+export const globalMemoryCache = new Map<string, string>();
 
 // Open IndexedDB database
-function openMediaDb(): Promise<IDBDatabase> {
+export function openMediaDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
       reject(new Error('IndexedDB not supported in this browser'));
@@ -27,6 +30,39 @@ function openMediaDb(): Promise<IDBDatabase> {
 }
 
 /**
+ * Pre-populates the in-memory cache with previously stored items for instant, synchronous access
+ */
+export async function warmUpMemoryCache(): Promise<void> {
+  try {
+    const db = await openMediaDb();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+    
+    return new Promise((resolve) => {
+      request.onsuccess = () => {
+        const results = request.result || [];
+        for (const item of results) {
+          if (item && item.blob) {
+            try {
+              const url = URL.createObjectURL(item.blob);
+              globalMemoryCache.set(item.id, url);
+              if (item.filename) {
+                globalMemoryCache.set(item.filename, url);
+              }
+            } catch (err) {}
+          }
+        }
+        resolve();
+      };
+      request.onerror = () => resolve();
+    });
+  } catch (e) {
+    console.warn('Memory cache warm up failed:', e);
+  }
+}
+
+/**
  * Saves a media Blob / File to IndexedDB
  */
 export async function saveMediaToIndexedDb(id: string, blob: Blob | File, filename?: string): Promise<void> {
@@ -41,6 +77,16 @@ export async function saveMediaToIndexedDb(id: string, blob: Blob | File, filena
       filename: filename || id,
       timestamp: Date.now()
     });
+    
+    // Save to global in-memory Object URL cache for zero-latency retrieval
+    try {
+      const memoryUrl = URL.createObjectURL(blob);
+      globalMemoryCache.set(id, memoryUrl);
+      if (filename) {
+        globalMemoryCache.set(filename, memoryUrl);
+      }
+    } catch (err) {}
+
     return new Promise((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -62,7 +108,18 @@ export async function getMediaFromIndexedDb(id: string): Promise<Blob | null> {
     return new Promise((resolve) => {
       request.onsuccess = () => {
         if (request.result && request.result.blob) {
-          resolve(request.result.blob);
+          const blob = request.result.blob;
+          // Populate the memory cache on demand
+          if (!globalMemoryCache.has(id)) {
+            try {
+              const memoryUrl = URL.createObjectURL(blob);
+              globalMemoryCache.set(id, memoryUrl);
+              if (request.result.filename) {
+                globalMemoryCache.set(request.result.filename, memoryUrl);
+              }
+            } catch (err) {}
+          }
+          resolve(blob);
         } else {
           resolve(null);
         }

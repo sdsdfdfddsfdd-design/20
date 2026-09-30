@@ -18,7 +18,7 @@ import {
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
-import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl, globalMemoryCache } from '../utils/mediaStorage';
 
 interface GiftModalProps {
   gift: GiftItem | null;
@@ -57,8 +57,31 @@ export const GiftModal: React.FC<GiftModalProps> = ({
     setCurrentTime(0);
     setIsMuted(false);
 
-    const initialUrl = resolveMediaUrl(gift.videoUrl);
-    setVideoSrc(initialUrl);
+    let isMounted = true;
+    
+    // Check global memory cache synchronously first!
+    const memoryVideo = globalMemoryCache.get(gift.id) || globalMemoryCache.get(gift.videoUrl);
+    if (memoryVideo) {
+      setVideoSrc(memoryVideo);
+    } else {
+      const loadMedia = async () => {
+        try {
+          const cachedBlob = await getMediaFromIndexedDb(gift.id) || await getMediaFromIndexedDb(gift.videoUrl);
+          if (cachedBlob && isMounted) {
+            setVideoSrc(URL.createObjectURL(cachedBlob));
+            return;
+          }
+        } catch (e) {
+          console.warn('Could not read cached video on mount:', e);
+        }
+        
+        if (isMounted) {
+          setVideoSrc(resolveMediaUrl(gift.videoUrl));
+        }
+      };
+
+      loadMedia();
+    }
 
     const timer = setTimeout(() => {
       if (videoRef.current) {
@@ -76,9 +99,12 @@ export const GiftModal: React.FC<GiftModalProps> = ({
           }
         });
       }
-    }, 100);
+    }, 150);
 
-    return () => clearTimeout(timer);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [gift]);
 
   // If video fails to load, try recovery from IndexedDB or Proxy

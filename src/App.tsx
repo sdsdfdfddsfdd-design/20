@@ -4,6 +4,7 @@ import { INITIAL_GIFTS } from './data/initialGifts';
 import { INITIAL_EMPLOYEES } from './data/initialEmployees';
 import { INITIAL_BANNERS } from './data/initialBanners';
 import { Header } from './components/Header';
+import { giftPreloader } from './utils/giftPreloader';
 import { HeroBanners } from './components/HeroBanners';
 import { CategoryBar } from './components/CategoryBar';
 import { GiftCard } from './components/GiftCard';
@@ -46,6 +47,13 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Background Cache/Preload trigger for 100% instant playback!
+  useEffect(() => {
+    if (gifts && gifts.length > 0) {
+      giftPreloader.start(gifts);
+    }
+  }, [gifts]);
 
   // Purchased Deliveries History
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
@@ -122,9 +130,12 @@ export default function App() {
     localStorage.setItem('jiawei_active_emp_id', activeEmployeeId);
   }, [activeEmployeeId]);
 
-  // Seed database once on mount if empty
+  // Seed database once on mount if empty & warm up memory cache
   useEffect(() => {
     seedDatabase();
+    import('./utils/mediaStorage').then(({ warmUpMemoryCache }) => {
+      warmUpMemoryCache().catch(() => {});
+    });
   }, []);
 
   // Cart State

@@ -3,7 +3,7 @@ import { Play, Video, Volume2, Sparkles, ArrowRight, ArrowLeft } from 'lucide-re
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
-import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl, globalMemoryCache } from '../utils/mediaStorage';
 
 interface GiftCardProps {
   gift: GiftItem;
@@ -22,7 +22,6 @@ export const GiftCard: React.FC<GiftCardProps> = ({
 }) => {
   const t = translations[lang];
   const [isHovered, setIsHovered] = useState(false);
-  const [videoSrc, setVideoSrc] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasPoster = Boolean(gift.posterUrl && gift.posterUrl.trim());
@@ -51,11 +50,65 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     true // Most live streaming gifts have sound effects
   );
 
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [posterSrc, setPosterSrc] = useState<string>('');
+
   useEffect(() => {
-    if (gift.videoUrl) {
-      setVideoSrc(resolveMediaUrl(gift.videoUrl));
+    let isMounted = true;
+    
+    // Check global memory cache synchronously first!
+    const memoryVideo = globalMemoryCache.get(gift.id) || globalMemoryCache.get(gift.videoUrl);
+    const memoryPoster = globalMemoryCache.get(`${gift.id}_poster`) || globalMemoryCache.get(gift.posterUrl || '');
+    
+    if (memoryVideo) {
+      setVideoSrc(memoryVideo);
     }
-  }, [gift.videoUrl]);
+    if (memoryPoster) {
+      setPosterSrc(memoryPoster);
+    }
+    
+    const loadCachedMedia = async () => {
+      // 1. Try to load video from IndexedDB cache
+      if (gift.videoUrl && !memoryVideo) {
+        try {
+          const cachedVideo = await getMediaFromIndexedDb(gift.id) || await getMediaFromIndexedDb(gift.videoUrl);
+          if (cachedVideo && isMounted) {
+            setVideoSrc(URL.createObjectURL(cachedVideo));
+          } else if (isMounted) {
+            setVideoSrc(resolveMediaUrl(gift.videoUrl));
+          }
+        } catch (err) {
+          if (isMounted) setVideoSrc(resolveMediaUrl(gift.videoUrl));
+        }
+      } else if (!gift.videoUrl && isMounted) {
+        setVideoSrc('');
+      }
+
+      // 2. Try to load poster from IndexedDB cache
+      if (gift.posterUrl && !memoryPoster) {
+        try {
+          const cachedPoster = await getMediaFromIndexedDb(`${gift.id}_poster`) || await getMediaFromIndexedDb(gift.posterUrl);
+          if (cachedPoster && isMounted) {
+            setPosterSrc(URL.createObjectURL(cachedPoster));
+          } else if (isMounted) {
+            setPosterSrc(resolveMediaUrl(gift.posterUrl));
+          }
+        } catch (err) {
+          if (isMounted) setPosterSrc(resolveMediaUrl(gift.posterUrl));
+        }
+      } else if (!gift.posterUrl && isMounted) {
+        setPosterSrc('');
+      }
+    };
+
+    if (!memoryVideo || !memoryPoster) {
+      loadCachedMedia();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [gift.id, gift.videoUrl, gift.posterUrl]);
 
   const handleMouseEnter = () => {
     setIsHovered(true);
@@ -163,7 +216,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
 
             {/* Front Poster Image (Visible when not hovered) */}
             <img
-              src={resolveMediaUrl(gift.posterUrl)}
+              src={posterSrc || resolveMediaUrl(gift.posterUrl)}
               alt={displayTitle}
               className={`w-full h-full object-contain pointer-events-none transition-all duration-300 drop-shadow-2xl ${
                 isHovered && (isVideo || isSvga || gift.videoUrl) ? 'opacity-0 scale-105' : 'opacity-100 group-hover:scale-105'
@@ -203,7 +256,7 @@ export const GiftCard: React.FC<GiftCardProps> = ({
           />
         ) : gift.videoUrl ? (
           <img
-            src={resolveMediaUrl(gift.videoUrl)}
+            src={videoSrc || resolveMediaUrl(gift.videoUrl)}
             alt={displayTitle}
             className="w-full h-full object-contain pointer-events-none transition-transform duration-500 group-hover:scale-105 opacity-100 filter-none drop-shadow-2xl"
             loading="lazy"
