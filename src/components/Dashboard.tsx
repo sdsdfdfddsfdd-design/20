@@ -68,6 +68,7 @@ import {
   addGift, 
   updateGift, 
   deleteGift, 
+  deleteAllGiftsFromDb,
   updateCreatorGiftsWhatsapp,
   updateEmployee, 
   changeEmployeeRole,
@@ -1166,9 +1167,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setActiveTab('create');
   };
 
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+
   const handleDeleteGift = (id: string) => {
     if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه الهدية؟' : '确认删除该礼物素材？')) {
       deleteGift(id);
+    }
+  };
+
+  const handleDeleteAllGifts = async () => {
+    const count = gifts.length;
+    if (count === 0) {
+      alert(lang === 'ar' ? 'لا توجد أي منتجات أو هدايا مرفوعة لحذفها.' : '没有可删除的产品');
+      return;
+    }
+
+    const confirmMsg = lang === 'ar'
+      ? `⚠️ تحذير مهم جداً: هل أنت متأكد من رغبتك في حذف جميع المنتجات والهدايا المرفوعة (${count} هدية) نهائياً من قاعدة البيانات والمتجر؟\n\nلن يمكن التراجع عن هذا الإجراء وسيتم إفراغ المتجر فوراً.`
+      : `⚠️ 警告：确定要永久清空并删除所有已上传的 (${count} 件) 产品与礼物吗？此操作无法撤销。`;
+
+    if (window.confirm(confirmMsg)) {
+      try {
+        setIsDeletingAll(true);
+        const deletedCount = await deleteAllGiftsFromDb();
+        setGifts([]);
+        setSuccessMessage(
+          lang === 'ar'
+            ? `✓ تم حذف جميع المنتجات المرفوعة بنجاح (${deletedCount || count} هدية) وإفراغ المتجر بالكامل!`
+            : `✓ 已成功删除所有已上传产品 (${deletedCount || count} 件)！`
+        );
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } catch (err: any) {
+        console.error('Error deleting all gifts:', err);
+        alert(lang === 'ar' ? 'حدث خطأ أثناء محاولة حذف المنتجات' : '删除失败，请稍后重试');
+      } finally {
+        setIsDeletingAll(false);
+      }
     }
   };
 
@@ -2529,8 +2563,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* TAB 2: ACTIVE GIFTS LIST */}
       {activeTab === 'list' && (
         <div className="bg-[#111520] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-          {/* Search in List */}
-          <div className="flex items-center justify-between gap-4">
+          {/* Search in List and Action Buttons */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="relative max-w-sm w-full">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -2542,16 +2576,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
               />
             </div>
 
-            <button
-              onClick={() => {
-                setEditingId(null);
-                setActiveTab('create');
-              }}
-              className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 flex items-center gap-1.5"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>{t.addNewGift}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* DELETE ALL UPLOADED PRODUCTS BUTTON (زر حذف جميع المنتجات المرفوعة) */}
+              <button
+                type="button"
+                disabled={isDeletingAll || gifts.length === 0}
+                onClick={handleDeleteAllGifts}
+                className="px-3.5 py-2 rounded-xl bg-red-950/70 hover:bg-red-900 text-red-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none text-xs font-bold border border-red-800/80 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                title={lang === 'ar' ? 'حذف جميع المنتجات المرفوعة نهائياً' : '清空并删除所有已上传产品'}
+              >
+                {isDeletingAll ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                )}
+                <span>
+                  {isDeletingAll
+                    ? (lang === 'ar' ? 'جارِ الحذف...' : '正在删除...')
+                    : (lang === 'ar' ? `حذف جميع المنتجات المرفوعة (${gifts.length})` : `清空所有产品 (${gifts.length})`)}
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingId(null);
+                  setActiveTab('create');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>{t.addNewGift}</span>
+              </button>
+            </div>
           </div>
 
           {/* Table */}

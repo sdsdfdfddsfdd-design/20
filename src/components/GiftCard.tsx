@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Eye, ShoppingCart, CheckCircle2, Sparkles, Flame, MessageCircle, Video } from 'lucide-react';
+import { Play, Video, ArrowRight, ArrowLeft } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
@@ -9,16 +9,16 @@ interface GiftCardProps {
   gift: GiftItem;
   lang: Language;
   onSelectGift: (gift: GiftItem) => void;
-  onQuickBuy: (gift: GiftItem) => void;
-  onAddToCart: (gift: GiftItem) => void;
+  onQuickBuy?: (gift: GiftItem) => void;
+  onAddToCart?: (gift: GiftItem) => void;
+  isSelected?: boolean;
 }
 
 export const GiftCard: React.FC<GiftCardProps> = ({
   gift,
   lang,
   onSelectGift,
-  onQuickBuy,
-  onAddToCart
+  isSelected = false
 }) => {
   const t = translations[lang];
   const [isHovered, setIsHovered] = useState(false);
@@ -36,7 +36,13 @@ export const GiftCard: React.FC<GiftCardProps> = ({
     ) && !gift.videoUrl.toLowerCase().includes('.mp4') && !gift.videoUrl.toLowerCase().includes('.webm')
   );
 
-  const startTime = typeof gift.previewStartTime === 'number' ? gift.previewStartTime : 0;
+  const isVideo = Boolean(
+    gift.videoUrl && (
+      gift.videoUrl.toLowerCase().includes('.mp4') ||
+      gift.videoUrl.toLowerCase().includes('.webm') ||
+      gift.videoUrl.includes('video/')
+    )
+  );
 
   useEffect(() => {
     if (gift.videoUrl) {
@@ -47,26 +53,14 @@ export const GiftCard: React.FC<GiftCardProps> = ({
   const handleMouseEnter = () => {
     setIsHovered(true);
     if (videoRef.current) {
-      if (startTime > 0 && Math.abs(videoRef.current.currentTime - startTime) > 0.5 && !isHovered) {
-        try {
-          videoRef.current.currentTime = startTime;
-        } catch (e) {}
-      }
-      videoRef.current.play().catch(() => {
-        // Autoplay may be restricted if user hasn't interacted
-      });
+      videoRef.current.play().catch(() => {});
     }
   };
 
   const handleMouseLeave = () => {
     setIsHovered(false);
-    if (videoRef.current) {
+    if (videoRef.current && hasPoster) {
       videoRef.current.pause();
-      if (startTime > 0) {
-        try {
-          videoRef.current.currentTime = startTime;
-        } catch (e) {}
-      }
     }
   };
 
@@ -84,211 +78,104 @@ export const GiftCard: React.FC<GiftCardProps> = ({
   };
 
   const displayTitle = lang === 'ar' && gift.titleAr ? gift.titleAr : lang === 'en' && gift.titleEn ? gift.titleEn : gift.title;
+  const formatName = gift.formats?.[0]?.name ? gift.formats[0].name.split(' ')[0].split('带')[0] : (isSvga ? 'SVGA' : isVideo ? 'MP4' : 'VFX');
 
   return (
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={() => onSelectGift(gift)}
-      className="group relative flex flex-col rounded-2xl bg-[#131722] border border-slate-800/90 hover:border-cyan-500/60 transition-all duration-300 hover:shadow-xl hover:shadow-cyan-950/20 overflow-hidden cursor-pointer"
+      className={`group relative flex flex-col rounded-2xl bg-[#0e121a] border transition-all duration-300 overflow-hidden cursor-pointer shadow-md ${
+        isSelected 
+          ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-amber-400/20 shadow-lg' 
+          : 'border-slate-800/80 hover:border-cyan-500/60 hover:shadow-cyan-950/20'
+      }`}
     >
-      {/* Visual Container (Video on hover or full video face when no poster) */}
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-950 flex items-center justify-center">
-        {/* Background Poster Image (Only if poster is provided and not disabled) */}
-        {hasPoster && (
-          <img
-            src={gift.posterUrl}
-            alt={displayTitle}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              isHovered ? 'opacity-20' : 'opacity-100'
-            }`}
-            loading="lazy"
-          />
-        )}
+      {/* 1. Preview Container (Aspect Square / Frame Viewer with Checkerboard or Dark BG) */}
+      <div className="relative aspect-square w-full overflow-hidden bg-[#090b10] flex items-center justify-center p-2">
+        {/* Background checkerboard for transparency simulation */}
+        <div 
+          className="absolute inset-0 opacity-15 pointer-events-none" 
+          style={{
+            backgroundImage: `linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)`,
+            backgroundSize: '16px 16px',
+            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px'
+          }}
+        />
 
-        {/* Live SVGA or Video Stream Preview */}
+        {/* SVGA Live Player */}
         {isSvga && gift.videoUrl ? (
-          <div
-            className={`w-full h-full flex items-center justify-center transition-opacity duration-300 ${
-              hasPoster
-                ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
-                : 'opacity-100'
-            }`}
-          >
-            {isHovered || !hasPoster ? (
-              <SvgaPlayer
-                src={videoSrc || gift.videoUrl}
-                autoPlay={true}
-                loop={true}
-                isMuted={true}
-                backdrop="checker"
-                className="w-full h-full object-contain"
-              />
-            ) : null}
+          <div className="w-full h-full flex items-center justify-center">
+            <SvgaPlayer
+              src={videoSrc || gift.videoUrl}
+              autoPlay={true}
+              loop={true}
+              isMuted={true}
+              backdrop="checker"
+              className="w-full h-full object-contain pointer-events-none"
+            />
           </div>
-        ) : (
+        ) : isVideo && videoSrc ? (
+          /* Video MP4 / WebM Player */
           <video
             ref={videoRef}
-            src={videoSrc || undefined}
-            autoPlay={!hasPoster}
-            onLoadedMetadata={(e) => {
-              if (startTime > 0) {
-                try {
-                  e.currentTarget.currentTime = startTime;
-                } catch (err) {}
-              }
-            }}
-            onCanPlay={() => {
-              if (!hasPoster || isHovered) {
-                videoRef.current?.play().catch(() => {});
-              }
-            }}
-            onError={handleVideoError}
+            src={videoSrc}
+            autoPlay
             loop
             muted
             playsInline
-            preload={!hasPoster ? 'auto' : 'metadata'}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              hasPoster
-                ? isHovered ? 'absolute inset-0 opacity-100' : 'absolute inset-0 opacity-0 pointer-events-none'
-                : 'opacity-100'
-            }`}
+            onError={handleVideoError}
+            className="w-full h-full object-contain pointer-events-none"
           />
-        )}
-
-        {/* Video-Only Badge (if no poster image) */}
-        {!hasPoster && (
-          <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-[10px] text-cyan-300 font-medium">
-            <Video className="w-2.5 h-2.5" />
-            <span>{lang === 'ar' ? 'فيديو مباشر' : '动态视频'}</span>
+        ) : hasPoster ? (
+          /* Image / Poster Frame */
+          <img
+            src={gift.posterUrl}
+            alt={displayTitle}
+            className="w-full h-full object-contain pointer-events-none transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          /* Fallback visual */
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
+            <Video className="w-8 h-8 opacity-40 mb-1" />
+            <span className="text-[10px] font-mono">{formatName}</span>
           </div>
         )}
+      </div>
 
-        {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-10">
-          <div className="flex items-center gap-1.5">
-            <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-red-600 to-pink-600 text-white text-[10px] font-bold shadow-md uppercase tracking-wider flex items-center gap-1">
-              <Flame className="w-2.5 h-2.5 fill-current" />
-              {gift.isNew ? (lang === 'ar' ? 'جديد' : '新秀') : (lang === 'ar' ? 'أصلي' : '原创')}
-            </span>
-            {gift.isVip && (
-              <span className="px-1.5 py-0.5 rounded-md bg-amber-500/90 text-slate-950 text-[10px] font-black">
-                VIP
-              </span>
-            )}
-          </div>
+      {/* 2. Content Info Section (Exact match to reference video) */}
+      <div className="p-3 flex flex-col gap-1.5 bg-[#0e121a]">
+        {/* Watch Animation Link */}
+        <div className="flex items-center gap-1 text-cyan-400 group-hover:text-cyan-300 font-semibold text-xs transition-colors">
+          <span>{t.watchAnimation}</span>
+          {lang === 'ar' ? (
+            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+          ) : (
+            <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+          )}
+        </div>
 
-          <span className="px-2 py-0.5 rounded-md bg-slate-900/80 backdrop-blur-md text-cyan-300 text-[10px] font-mono font-semibold border border-slate-700/60">
-            {gift.formats[0]?.name.split('带')[0] || 'SVGA'}
+        {/* Title and Price Row */}
+        <div className="flex items-start justify-between gap-1.5 pt-0.5">
+          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-200 transition-colors line-clamp-1 leading-snug">
+            {displayTitle}
+          </h3>
+          <span className="text-emerald-400 font-extrabold text-xs sm:text-sm whitespace-nowrap shrink-0">
+            $ {gift.price} <span className="text-[10px] text-emerald-300/80 font-semibold">USD</span>
           </span>
         </div>
 
-        {/* Overlay Hover Actions on Desktop */}
-        <div
-          className={`hidden sm:flex absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex-col justify-end p-3 transition-opacity duration-200 ${
-            isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectGift(gift);
-              }}
-              className="flex-1 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-white text-xs font-semibold flex items-center justify-center gap-1 border border-slate-700 backdrop-blur"
-            >
-              <Eye className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{lang === 'ar' ? 'معاينة' : '试看'}</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickBuy(gift);
-              }}
-              className="flex-1 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-emerald-500/20"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span>{t.buyNowBtn}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Card Info Section - 100% clone of video with mobile refinement */}
-      <div className="p-2.5 sm:p-3.5 flex flex-col flex-1 justify-between gap-2 sm:gap-2.5">
-        <div>
-          {/* Title & Price Line */}
-          <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-1.5">
-            <h3 className="text-xs sm:text-sm font-bold text-slate-100 group-hover:text-cyan-300 transition-colors truncate">
-              {displayTitle}
-            </h3>
-            <span className="text-emerald-400 font-extrabold text-xs sm:text-sm whitespace-nowrap">
-              $ {gift.price} <span className="text-[9px] sm:text-[10px] text-emerald-300/80 font-semibold">USD</span>
+        {/* Format Badge (e.g. SVGA / MP4 / VAP) */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-0.5">
+          <span className="text-slate-400 tracking-wider font-semibold">
+            {formatName}
+          </span>
+          {gift.category && (
+            <span className="text-[10px] text-slate-500 truncate max-w-[80px]">
+              {gift.category}
             </span>
-          </div>
-
-          {/* Tags line: [AI 原创] [主题] [礼物] [2D/3D] */}
-          <div className="flex flex-wrap items-center gap-1 mb-1.5 sm:mb-2">
-            <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded bg-cyan-950/70 text-cyan-400 border border-cyan-800/50">
-              AI 原创
-            </span>
-            <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 border border-slate-700/60">
-              {gift.theme}
-            </span>
-            <span className="hidden xs:inline-block text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 border border-slate-700/60">
-              礼物
-            </span>
-            <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded bg-blue-950/70 text-blue-300 border border-blue-800/50 font-semibold">
-              {gift.effectType}
-            </span>
-          </div>
-
-          {/* Details line: NO. ID + 全网排他 */}
-          <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
-            <span className="truncate max-w-[90px]">{gift.id}</span>
-            <span className="text-slate-400 shrink-0">
-              {t.exclusiveLabel}: ${gift.exclusivePrice}
-            </span>
-          </div>
-        </div>
-
-        {/* Creator Info Footer with WhatsApp direct contact */}
-        <div className="pt-1.5 sm:pt-2 border-t border-slate-800/70 flex items-center justify-between text-[10px] sm:text-[11px]">
-          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-            <img
-              src={gift.author.avatar}
-              alt={gift.author.name}
-              className="w-4 h-4 rounded-full object-cover shrink-0"
-            />
-            <span className="text-slate-300 font-medium truncate max-w-[70px] sm:max-w-[95px] hover:text-cyan-300" title={gift.author.name}>
-              {gift.author.name}
-            </span>
-            {gift.author.verified && (
-              <CheckCircle2 className="w-3 h-3 text-cyan-400 shrink-0 hidden sm:inline" />
-            )}
-
-            {/* Direct WhatsApp Chat Trigger */}
-            {gift.author.whatsapp && (
-              <a
-                href={`https://wa.me/${gift.author.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                  lang === 'ar'
-                    ? `مرحباً، أنا مهتم بالحصول على مؤثر البث [${displayTitle} - ${gift.id}] المعروض في المنصة.`
-                    : `Hello! I am inquiring about the live stream gift effect [${displayTitle} - ${gift.id}].`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                title={lang === 'ar' ? `تواصل مع ${gift.author.name} عبر واتساب: ${gift.author.whatsapp}` : `Chat on WhatsApp: ${gift.author.whatsapp}`}
-                className="p-1 rounded bg-emerald-950/60 hover:bg-emerald-600/80 text-emerald-400 hover:text-white border border-emerald-800/60 transition-colors shrink-0 flex items-center justify-center shadow-sm"
-              >
-                <MessageCircle className="w-3 h-3" />
-              </a>
-            )}
-          </div>
-
-          <div className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
-            {lang === 'ar' ? `تحميل ${gift.downloadsCount}` : `已下载 ${gift.downloadsCount}`}
-          </div>
+          )}
         </div>
       </div>
     </div>

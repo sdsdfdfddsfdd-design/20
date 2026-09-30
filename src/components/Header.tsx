@@ -1,22 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Search, 
   ShoppingCart, 
-  User, 
   Headphones, 
-  RotateCcw, 
   LayoutDashboard, 
   Store, 
   PackageCheck,
-  Globe,
+  ChevronDown,
+  MessageCircle,
   Sparkles,
-  Zap,
-  LogOut,
-  ShieldCheck,
-  Briefcase
+  Info,
+  RotateCcw
 } from 'lucide-react';
 import { Language, CartItem, AuthUser, SiteSettings } from '../types';
 import { translations } from '../utils/translations';
+import { AboutModal } from './AboutModal';
+import { LanguageModal } from './LanguageModal';
 
 interface HeaderProps {
   lang: Language;
@@ -35,6 +34,7 @@ interface HeaderProps {
   setIsSupportOpen: (open: boolean) => void;
   user: AuthUser | null;
   siteSettings?: SiteSettings;
+  onResetFilters?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -53,11 +53,24 @@ export const Header: React.FC<HeaderProps> = ({
   setIsDeliveriesOpen,
   setIsSupportOpen,
   user,
-  siteSettings
+  siteSettings,
+  onResetFilters
 }) => {
   const t = translations[lang];
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isLangOpen, setIsLangOpen] = useState(false);
 
-  const handleDashboardClick = () => {
+  const brandName = siteSettings?.siteName?.trim() || 'Destroy KING Designer';
+  const whatsappNumber = siteSettings?.whatsapp || '+923400700013';
+  const cleanWhatsapp = whatsappNumber.replace(/[^0-9]/g, '');
+
+  const langLabels: Record<Language, string> = {
+    en: 'English',
+    zh: '中文',
+    ar: 'العربية'
+  };
+
+  const handleDashboardToggle = () => {
     if (!user) {
       onOpenStaffAuth();
       return;
@@ -74,222 +87,214 @@ export const Header: React.FC<HeaderProps> = ({
     setCurrentView(currentView === 'store' ? 'dashboard' : 'store');
   };
 
-  const displayName = siteSettings?.siteName?.trim() || t.siteName;
-  const displaySlogan = siteSettings?.siteSlogan?.trim() || t.siteSlogan;
-  const displaySubtitle = siteSettings?.siteSubTitle?.trim() || 'JIAWEI EFFECTS · LIVE STREAM VFX';
+  const handleBackToWebsite = () => {
+    if (currentView === 'dashboard') {
+      setCurrentView('store');
+    }
+    if (onResetFilters) {
+      onResetFilters();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#0b0e14]/95 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-6 py-2.5 transition-all">
-      <div className="max-w-[1720px] mx-auto flex items-center justify-between gap-3">
-        {/* Brand Logo & Name */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div 
-            onClick={() => setCurrentView('store')}
-            className="flex items-center gap-2.5 cursor-pointer group"
-          >
-            {/* Custom Logo Image or Default Stylized Cyan-Blue V Logo */}
-            {siteSettings?.logoUrl ? (
-              <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-slate-900 border border-slate-700/80 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
-                <img
-                  src={siteSettings.logoUrl}
-                  alt={displayName}
-                  className="w-full h-full object-contain p-0.5"
-                />
-              </div>
-            ) : (
-              <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current" preserveAspectRatio="xMidYMid meet">
-                  <path d="M3.5 4L9.5 19.5L14 9.5L12 5.5L8 14L5.5 4H3.5ZM14.5 4L20.5 19.5H18L13.5 8L15 4H14.5Z" />
-                </svg>
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping opacity-75"></span>
-              </div>
-            )}
-
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-lg tracking-wide text-white group-hover:text-cyan-400 transition-colors">
-                  {displayName}
-                </span>
-                {displaySlogan && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium border border-cyan-500/30">
-                    {displaySlogan}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] text-slate-400 tracking-wider">
-                {displaySubtitle}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Center Search Bar */}
-        {currentView === 'store' && (
-          <div className="flex-1 max-w-xl mx-2 hidden md:block">
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                onSearch();
-              }}
-              className="relative flex items-center"
+    <>
+      <header className="w-full bg-[#0a0d14] border-b border-slate-900/90 pt-3 pb-3 px-3 sm:px-5 lg:px-8 transition-all">
+        <div className="max-w-4xl mx-auto flex flex-col gap-3">
+          
+          {/* Top Row: Brand Info + WhatsApp Contact */}
+          <div className="flex items-center justify-between gap-3">
+            <div 
+              onClick={handleBackToWebsite}
+              className="flex items-center gap-2.5 cursor-pointer group"
             >
-              <div className="relative w-full">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t.searchPlaceholder}
-                  className="w-full h-10 pl-10 pr-24 rounded-full bg-slate-900/90 border border-slate-700/70 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all shadow-inner"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-4 rounded-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md transition-all active:scale-95"
-                >
-                  {t.searchBtn}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Right Nav & Action Buttons */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Dashboard / Store Toggle Button - ONLY SHOW IF HAS PERMISSION OR IS ADMIN */}
-          {user && (
-            user.role === 'admin' || 
-            user.role === 'designer' || 
-            user.permissions?.giftUploadAndPublish || 
-            user.permissions?.viewOrders || 
-            user.permissions?.manageAccounts || 
-            user.permissions?.manageBanners || 
-            user.permissions?.manageSettings
-          ) && (
-            <button
-              onClick={handleDashboardClick}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
-                currentView === 'dashboard'
-                  ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-md shadow-cyan-500/10'
-                  : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-transparent hover:opacity-95 shadow-md shadow-blue-500/20'
-              }`}
-            >
-              {currentView === 'dashboard' ? (
-                <>
-                  <Store className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{t.backToStore}</span>
-                </>
+              {/* Stylized Crown / Avatar Logo as in Reference Video */}
+              {siteSettings?.logoUrl ? (
+                <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-amber-400/80 shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform bg-slate-900">
+                  <img
+                    src={siteSettings.logoUrl}
+                    alt={brandName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               ) : (
-                <>
-                  <LayoutDashboard className="w-3.5 h-3.5 text-white" />
-                  <span>{t.dashboard}</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                </>
+                <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 via-amber-600 to-yellow-600 p-0.5 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
+                  <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center overflow-hidden">
+                    <span className="text-sm font-black text-amber-300">👑</span>
+                  </div>
+                </div>
               )}
-            </button>
-          )}
 
-          {/* Deliveries Box Shortcut */}
-          <button
-            onClick={() => setIsDeliveriesOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 hover:text-white transition-colors"
-            title={t.myDeliveries}
-          >
-            <PackageCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden lg:inline">{t.myDeliveries}</span>
-          </button>
-
-          {/* Customer Service */}
-          <button
-            onClick={() => setIsSupportOpen(true)}
-            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800/80 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <Headphones className="w-3.5 h-3.5" />
-            <span>{t.customerService}</span>
-          </button>
-
-          {/* Language Switcher */}
-          <div className="relative flex items-center bg-slate-900/90 border border-slate-800 rounded-lg p-0.5 text-xs text-slate-300">
-            <Globe className="w-3.5 h-3.5 ml-1.5 mr-1 text-slate-400 hidden sm:inline" />
-            <button
-              onClick={() => setLang('zh')}
-              className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                lang === 'zh' ? 'bg-cyan-500/30 text-cyan-300' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              中文
-            </button>
-            <button
-              onClick={() => setLang('ar')}
-              className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                lang === 'ar' ? 'bg-cyan-500/30 text-cyan-300' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              عربي
-            </button>
-            <button
-              onClick={() => setLang('en')}
-              className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                lang === 'en' ? 'bg-cyan-500/30 text-cyan-300' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              EN
-            </button>
-          </div>
-
-          {/* User Account / Auth Section */}
-          {user ? (
-            <div className="flex items-center gap-2 pl-1 bg-slate-900/90 border border-slate-800 rounded-2xl p-1 pr-2">
-              <img
-                src={user.avatar}
-                alt={user.name}
-                className="w-7 h-7 rounded-xl border border-cyan-500/40 object-cover shrink-0"
-              />
-              <div className="hidden xl:flex flex-col text-right">
-                <span className="text-xs font-bold text-slate-100 max-w-[110px] truncate">
-                  {user.name}
+              <div className="flex flex-col">
+                <span className="font-extrabold text-base sm:text-lg text-white tracking-wide group-hover:text-cyan-400 transition-colors">
+                  {brandName}
                 </span>
-                <span className="text-[10px] text-cyan-400 font-medium">
-                  {user.role === 'admin'
-                    ? (lang === 'ar' ? '👑 مشرف المنصة' : '超级管理员')
-                    : user.role === 'designer'
-                    ? (lang === 'ar' ? '🎨 مصمم معتمد' : '签约设计师')
-                    : user.isTrial
-                    ? (lang === 'ar' ? '⚡ حساب تجريبي' : '体验账号')
-                    : (lang === 'ar' ? 'مشتري' : '买家')}
-                </span>
+
+                {/* WhatsApp Link under name */}
+                <a
+                  href={`https://wa.me/${cleanWhatsapp}?text=${encodeURIComponent(
+                    lang === 'ar'
+                      ? 'مرحباً، أود الاستفسار عن تصاميم ومؤثرات البث المباشر.'
+                      : 'Hello, I want to inquire about your live stream designs.'
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-mono"
+                  dir="ltr"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 fill-current text-emerald-400 shrink-0" />
+                  <span>WhatsApp: {whatsappNumber}</span>
+                </a>
               </div>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                title={lang === 'ar' ? 'تسجيل الخروج' : '退出登录'}
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
             </div>
-          ) : (
+
+            {/* Quick System Shortcuts (Deliveries / Dashboard / Cart) */}
             <div className="flex items-center gap-1.5">
-              {/* Login / Register Button */}
+              {/* Deliveries Box shortcut */}
               <button
-                onClick={() => setIsAuthOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs text-white font-bold shadow-md shadow-cyan-900/30 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                onClick={() => setIsDeliveriesOpen(true)}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors flex items-center gap-1 text-xs"
+                title={t.myDeliveries}
               >
-                <User className="w-3.5 h-3.5" />
-                <span>
-                  {lang === 'ar' ? (
+                <PackageCheck className="w-4 h-4 text-emerald-400" />
+                <span className="hidden md:inline text-[11px] font-medium">{t.myDeliveries}</span>
+              </button>
+
+              {/* Cart Drawer shortcut */}
+              {cartItems.length > 0 && (
+                <button
+                  onClick={() => setIsCartOpen(true)}
+                  className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-800/80 transition-colors flex items-center gap-1.5 text-xs"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span className="font-bold text-[11px]">{cartItems.length}</span>
+                </button>
+              )}
+
+              {/* Staff / Admin Dashboard Toggle */}
+              {user && (
+                user.role === 'admin' || 
+                user.role === 'designer' || 
+                user.permissions?.giftUploadAndPublish || 
+                user.permissions?.viewOrders
+              ) && (
+                <button
+                  onClick={handleDashboardToggle}
+                  className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1 ${
+                    currentView === 'dashboard'
+                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800'
+                  }`}
+                  title={currentView === 'dashboard' ? t.backToStore : t.dashboard}
+                >
+                  {currentView === 'dashboard' ? (
                     <>
-                      <span className="sm:hidden">تسجيل الدخول</span>
-                      <span className="hidden sm:inline">تسجيل الدخول / حساب جديد</span>
+                      <Store className="w-4 h-4 text-cyan-400" />
+                      <span className="hidden sm:inline text-[11px]">{t.backToStore}</span>
                     </>
                   ) : (
-                    t.login
+                    <>
+                      <LayoutDashboard className="w-4 h-4 text-cyan-400" />
+                      <span className="hidden sm:inline text-[11px]">{t.dashboard}</span>
+                    </>
                   )}
-                </span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Second Row: About Us + Search Designs Input (Exact Reference Video Style) */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* About Us Button */}
+            <button
+              onClick={() => setIsAboutOpen(true)}
+              className="px-3 sm:px-4 py-2 rounded-xl bg-[#141824] hover:bg-[#1a2030] text-slate-300 hover:text-white text-xs font-semibold border border-slate-800/90 shrink-0 transition-colors shadow-sm"
+            >
+              {t.aboutUs}
+            </button>
+
+            {/* Search Designs Input with inside icon */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.searchDesigns}
+                className="w-full h-10 px-3.5 pr-10 rounded-xl bg-[#131722] border border-slate-800 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 transition-all shadow-inner"
+              />
+              <button
+                type="button"
+                onClick={onSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-cyan-400 transition-colors"
+                aria-label="Search"
+              >
+                <Search className="w-4 h-4" />
               </button>
             </div>
-          )}
+          </div>
+
+          {/* Third Row: Action Buttons (Back to Website | Language English v | Headphones Support) */}
+          <div className="flex items-center gap-2 pt-0.5">
+            {/* Back to Website Button */}
+            <button
+              onClick={handleBackToWebsite}
+              className="px-3.5 py-1.5 rounded-xl bg-[#141824] hover:bg-[#1b2234] text-slate-200 hover:text-white text-xs font-medium border border-slate-800/90 transition-colors shadow-sm"
+            >
+              {t.backToWebsite}
+            </button>
+
+            {/* Language Selector Pill */}
+            <button
+              onClick={() => setIsLangOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#141824] hover:bg-[#1b2234] text-slate-200 hover:text-white text-xs font-medium border border-slate-800/90 transition-colors shadow-sm"
+            >
+              <span className="text-slate-400 text-[11px]">{lang === 'ar' ? 'اللغة' : 'Language'}</span>
+              <span className="text-cyan-400 font-semibold">{langLabels[lang]}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {/* Contact / Support Headphones Button */}
+            <button
+              onClick={() => setIsSupportOpen(true)}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-[#141824] hover:bg-[#1b2234] text-slate-300 hover:text-cyan-300 border border-slate-800/90 transition-colors flex items-center gap-1.5 text-xs shadow-sm"
+              title={t.contactSupport}
+            >
+              <Headphones className="w-4 h-4 text-cyan-400" />
+              <span className="hidden sm:inline font-medium">{t.contactSupport}</span>
+            </button>
+
+            {/* Reset / Clear Search if active */}
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="ml-auto px-2 py-1 rounded-lg bg-slate-900 text-slate-400 hover:text-white text-[11px] border border-slate-800"
+              >
+                {lang === 'ar' ? 'مسح البحث ✕' : 'Clear Search ✕'}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Modals for About Us and Language */}
+      <AboutModal
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
+        lang={lang}
+        siteSettings={siteSettings}
+        onOpenContact={() => {
+          setIsAboutOpen(false);
+          setIsSupportOpen(true);
+        }}
+      />
+
+      <LanguageModal
+        isOpen={isLangOpen}
+        onClose={() => setIsLangOpen(false)}
+        lang={lang}
+        setLang={setLang}
+      />
+    </>
   );
 };

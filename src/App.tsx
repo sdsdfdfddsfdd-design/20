@@ -4,10 +4,11 @@ import { INITIAL_GIFTS } from './data/initialGifts';
 import { INITIAL_EMPLOYEES } from './data/initialEmployees';
 import { INITIAL_BANNERS } from './data/initialBanners';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
 import { HeroBanners } from './components/HeroBanners';
-import { FilterBar } from './components/FilterBar';
+import { CategoryBar } from './components/CategoryBar';
 import { GiftCard } from './components/GiftCard';
+import { Pagination } from './components/Pagination';
+import { SelectedDesignViewer } from './components/SelectedDesignViewer';
 import { GiftModal } from './components/GiftModal';
 import { PurchaseModal } from './components/PurchaseModal';
 import { DeliveryBoxModal } from './components/DeliveryBoxModal';
@@ -20,7 +21,7 @@ import { Footer } from './components/Footer';
 import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery } from './lib/firebaseService';
 
 export default function App() {
-  // Language (Default to Arabic as requested by the user, with RTL support)
+  // Language (Default to Arabic with instant RTL toggle)
   const [lang, setLang] = useState<Language>('ar');
 
   // Sync HTML document direction and language dynamically
@@ -44,7 +45,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Purchased Deliveries History (صناديق الاستلام والطلبات المسجلة)
+  // Purchased Deliveries History
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
 
   useEffect(() => {
@@ -62,7 +63,6 @@ export default function App() {
     let currentUsers: EmployeeUser[] = [];
 
     const updateCombined = () => {
-      // Merge and remove duplicates if any (just in case)
       const combined = [...currentEmployees, ...currentUsers];
       const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
       if (unique.length > 0) {
@@ -88,7 +88,7 @@ export default function App() {
     });
   }, []);
 
-  // Hero Banners State with Firebase persistence & real-time sync across all clients
+  // Hero Banners State
   const [banners, setBanners] = useState<HeroBannerItem[]>(INITIAL_BANNERS);
 
   useEffect(() => {
@@ -107,8 +107,6 @@ export default function App() {
       try {
         const u = JSON.parse(savedUserStr);
         if (u && ['admin', 'designer', 'employee'].includes(u.role)) {
-          // Prefer the logged in user's ID over EMP-001 if not explicitly saved as something else,
-          // or if the saved ID is the default EMP-001, just use the real user's ID.
           if (!savedEmp || savedEmp === 'EMP-001') {
             return u.employeeId || u.id;
           }
@@ -140,11 +138,11 @@ export default function App() {
         return null;
       }
     }
-    return null; // Start as visitor/explorer so purchase prompts account creation as requested
+    return null;
   });
 
-  // Dynamic Categories State
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  // Dynamic Categories & Site Settings State
+  const [categories, setCategories] = useState<{ id: string; name: string; nameAr?: string; nameEn?: string }[]>([]);
   const [siteSettings, setSiteSettings] = useState<any>({});
 
   useEffect(() => {
@@ -172,16 +170,11 @@ export default function App() {
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('effects-store');
   const [category, setCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('default');
-  const [effectType, setEffectType] = useState('all');
-  const [aiFilter, setAiFilter] = useState('all');
-  const [priceFilter, setPriceFilter] = useState('all');
-  const [selectedFormat, setSelectedFormat] = useState('all');
 
   // Modals & Purchase Gate
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
+  const [inspectedGift, setInspectedGift] = useState<GiftItem | null>(null);
   const [purchaseGift, setPurchaseGift] = useState<GiftItem | null>(null);
   const [pendingPurchaseGift, setPendingPurchaseGift] = useState<GiftItem | null>(null);
   const [activeDelivery, setActiveDelivery] = useState<DeliveryItem | null>(null);
@@ -191,6 +184,10 @@ export default function App() {
   const [isDeliveriesOpen, setIsDeliveriesOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isVipOpen, setIsVipOpen] = useState(false);
+
+  // Pagination State (10 items per page as in reference video!)
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter Logic
   const filteredGifts = useMemo(() => {
@@ -202,64 +199,59 @@ export default function App() {
         const matchAr = gift.titleAr?.toLowerCase().includes(q);
         const matchEn = gift.titleEn?.toLowerCase().includes(q);
         const matchId = gift.id.toLowerCase().includes(q);
-        const matchTheme = gift.theme.toLowerCase().includes(q);
-        if (!matchTitle && !matchAr && !matchEn && !matchId && !matchTheme) return false;
+        const matchTheme = gift.theme?.toLowerCase().includes(q);
+        const matchFormat = gift.formats?.some(f => f.name.toLowerCase().includes(q));
+        if (!matchTitle && !matchAr && !matchEn && !matchId && !matchTheme && !matchFormat) return false;
       }
 
-      // Category
-      if (category !== 'all' && gift.category !== category) return false;
-
-      // Effect 2D/3D
-      if (effectType !== 'all' && gift.effectType !== effectType) return false;
-
-      // AI Filter
-      if (aiFilter === 'ai' && !gift.tags.includes('AI原创')) return false;
-      if (aiFilter === 'handdrawn' && !gift.tags.includes('纯手绘')) return false;
-
-      // Price filter
-      if (priceFilter === 'under100' && gift.price >= 100) return false;
-      if (priceFilter === '100-250' && (gift.price < 100 || gift.price > 250)) return false;
-      if (priceFilter === '250-400' && (gift.price <= 250 || gift.price > 400)) return false;
-      if (priceFilter === 'above400' && gift.price <= 400) return false;
-
-      // Format
-      if (selectedFormat !== 'all') {
-        const hasFormat = gift.formats.some((f) => f.name.toUpperCase().includes(selectedFormat.toUpperCase()));
-        if (!hasFormat) return false;
+      // Category matching
+      if (category !== 'all') {
+        if (category === 'frames' && gift.category !== 'frames') return false;
+        if (category === 'luxury' && gift.category !== 'luxury') return false;
+        if (category !== 'frames' && category !== 'luxury' && gift.category !== category) return false;
       }
 
       return true;
-    }).sort((a, b) => {
-      if (sortBy === 'price-asc') return a.price - b.price;
-      if (sortBy === 'price-desc') return b.price - a.price;
-      if (sortBy === 'popular') return b.downloadsCount - a.downloadsCount;
-      if (sortBy === 'newest') return (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0);
-      return 0;
     });
-  }, [gifts, searchQuery, category, effectType, aiFilter, priceFilter, selectedFormat, sortBy]);
+  }, [gifts, searchQuery, category]);
+
+  // Reset pagination when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [category, searchQuery]);
+
+  // Set default inspected gift
+  useEffect(() => {
+    if (!inspectedGift && filteredGifts.length > 0) {
+      setInspectedGift(filteredGifts[0]);
+    }
+  }, [filteredGifts, inspectedGift]);
+
+  // Paginated gifts slice
+  const totalPages = Math.max(1, Math.ceil(filteredGifts.length / ITEMS_PER_PAGE));
+  const paginatedGifts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredGifts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredGifts, currentPage]);
 
   const handleResetFilters = () => {
     setCategory('all');
-    setSortBy('default');
-    setEffectType('all');
-    setAiFilter('all');
-    setPriceFilter('all');
-    setSelectedFormat('all');
     setSearchQuery('');
+    setCurrentPage(1);
   };
 
   const generateWhatsAppLink = (gift: GiftItem, quantity: number = 1) => {
-    const phone = siteSettings?.whatsapp || gift.author?.whatsapp || '+966500000000';
+    const phone = siteSettings?.whatsapp || gift.author?.whatsapp || '+923400700013';
     const total = gift.price * quantity;
     
-    // Arabic Message
-    const messageAr = `مرحبًا، أريد شراء هذه الهدية من الموقع.
+    const messageAr = `مرحبًا، أريد شراء هذا التصميم من الموقع.
 
-اسم الهدية: ${gift.titleAr || gift.title}
-ID الهدية: ${gift.id}
-السعر: $${gift.price}
+اسم التصميم: ${gift.titleAr || gift.title}
+كود الهدية ID: ${gift.id}
+السعر: $${gift.price} USD
+الصيغة: ${gift.formats?.[0]?.name || 'SVGA'}
 الكمية: ${quantity}
-الإجمالي: $${total}
+الإجمالي: $${total} USD
 ${user ? `
 اسم الحساب: ${user.name}
 ID الحساب: ${user.id}` : ''}
@@ -270,7 +262,6 @@ ID الحساب: ${user.id}` : ''}
   };
 
   const handleAddToCart = (gift: GiftItem) => {
-    // Instead of cart, direct to WhatsApp as requested
     window.open(generateWhatsAppLink(gift, 1), '_blank');
   };
 
@@ -278,26 +269,22 @@ ID الحساب: ${user.id}` : ''}
     setCartItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Purchase Gate: User must log in / create account before purchasing, but can explore freely
   const handleInitiatePurchase = (gift: GiftItem) => {
     window.open(generateWhatsAppLink(gift, 1), '_blank');
   };
 
   const handleCheckoutAll = () => {
     if (cartItems.length === 0) return;
-    
-    // Group all cart items into one WhatsApp message
-    const phone = siteSettings?.whatsapp || '+966500000000';
+    const phone = siteSettings?.whatsapp || '+923400700013';
     let totalAll = 0;
-    
-    let messageAr = `مرحبًا، أريد شراء هذه الهدايا من الموقع.\n\n`;
+    let messageAr = `مرحبًا، أريد شراء هذه التصاميم من الموقع.\n\n`;
     
     cartItems.forEach((item, index) => {
       totalAll += item.price;
-      messageAr += `${index + 1}. ${item.gift.titleAr || item.gift.title} (ID: ${item.gift.id}) - $${item.price}\n`;
+      messageAr += `${index + 1}. ${item.gift.titleAr || item.gift.title} (ID: ${item.gift.id}) - $${item.price} USD\n`;
     });
     
-    messageAr += `\nالإجمالي الكلي: $${totalAll}\n`;
+    messageAr += `\nالإجمالي الكلي: $${totalAll} USD\n`;
     if (user) {
       messageAr += `\nاسم الحساب: ${user.name}\nID الحساب: ${user.id}\n`;
     }
@@ -313,7 +300,6 @@ ID الحساب: ${user.id}` : ''}
     localStorage.setItem('jiawei_current_user_v1', JSON.stringify(authUser));
     setIsAuthOpen(false);
 
-    // If user was trying to purchase, open the purchase modal immediately!
     if (pendingPurchaseGift) {
       setPurchaseGift(pendingPurchaseGift);
       setPendingPurchaseGift(null);
@@ -370,25 +356,14 @@ ID الحساب: ${user.id}` : ''}
     if (key === 'vip') setIsVipOpen(true);
     if (key === 'featured') {
       setCategory('all');
-      setSortBy('popular');
-    }
-    if (key === 'overseas') {
-      setCategory('luxury');
-    }
-    if (key === 'ai') {
-      setAiFilter('ai');
-    }
-    if (key === 'designer') {
-      setAiFilter('handdrawn');
-    }
-    if (key === 'app') {
-      setCategory('fun');
+    } else {
+      setCategory(key);
     }
   };
 
   return (
-    <div className={`min-h-screen flex flex-col bg-[#0b0e14] text-slate-100 font-sans ${lang === 'ar' ? 'rtl font-[Cairo]' : 'ltr'}`}>
-      {/* Top Main Navigation Header */}
+    <div className={`min-h-screen flex flex-col bg-[#07090e] text-slate-100 font-sans selection:bg-cyan-500 selection:text-black ${lang === 'ar' ? 'rtl font-[Cairo]' : 'ltr'}`}>
+      {/* 1. Header (Mobile First, Exactly Like Reference Video) */}
       <Header
         lang={lang}
         setLang={setLang}
@@ -409,81 +384,86 @@ ID الحساب: ${user.id}` : ''}
         setIsSupportOpen={setIsSupportOpen}
         user={user}
         siteSettings={siteSettings}
+        onResetFilters={handleResetFilters}
       />
 
-      {/* Main Layout */}
+      {/* 2. Main Body Content */}
       {currentView === 'store' ? (
-        <div className="flex-1 flex max-w-[1720px] w-full mx-auto">
-          {/* Left Sticky Sidebar (Clone of video) */}
-          <Sidebar
+        <main className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-5 lg:px-6 py-2 flex flex-col">
+          {/* Gallery Title, Subtitle & Featured Banner */}
+          <HeroBanners
             lang={lang}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            selectedCategory={category}
-            setSelectedCategory={setCategory}
-            onOpenVipModal={() => setIsVipOpen(true)}
-            categories={categories}
+            banners={banners}
+            onSelectQuickCategory={handleQuickCategorySelect}
+            onOpenCustomDesignModal={() => setIsSupportOpen(true)}
+            siteSettings={siteSettings}
           />
 
-          {/* Center / Right Content Canvas */}
-          <main className="flex-1 min-w-0 p-3 sm:p-4 lg:p-6">
-            {/* Top Carousel Banner Showcase */}
-            <HeroBanners
-              lang={lang}
-              banners={banners}
-              onSelectQuickCategory={handleQuickCategorySelect}
-              onOpenCustomDesignModal={() => setIsSupportOpen(true)}
-            />
+          {/* Horizontal Scrollable Categories Bar */}
+          <CategoryBar
+            selectedCategory={category}
+            onSelectCategory={setCategory}
+            categories={categories}
+            lang={lang}
+          />
 
-            {/* Filter Toolbar (Clone of video filter strip) */}
-            <FilterBar
-              lang={lang}
-              category={category}
-              setCategory={setCategory}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              effectType={effectType}
-              setEffectType={setEffectType}
-              aiFilter={aiFilter}
-              setAiFilter={setAiFilter}
-              priceFilter={priceFilter}
-              setPriceFilter={setPriceFilter}
-              selectedFormat={selectedFormat}
-              setSelectedFormat={setSelectedFormat}
-              onReset={handleResetFilters}
-              totalCount={filteredGifts.length}
-              categories={categories}
-            />
-
-            {/* Gifts Grid Showcase */}
-            {filteredGifts.length === 0 ? (
-              <div className="py-24 text-center text-slate-500 space-y-3">
-                <p className="text-sm">{lang === 'ar' ? 'لم يتم العثور على مؤثرات تطابق خيارات التصفية' : '未找到匹配的动效素材，请尝试重置筛选'}</p>
-                <button
-                  onClick={handleResetFilters}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-cyan-400 text-xs font-semibold"
-                >
-                  {lang === 'ar' ? 'إعادة ضبط الفلاتر' : '重置筛选条件'}
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-4">
-                {filteredGifts.map((gift) => (
+          {/* Design Cards Grid (Mobile 2 Columns) */}
+          {filteredGifts.length === 0 ? (
+            <div className="py-20 text-center text-slate-500 space-y-3">
+              <p className="text-sm">
+                {lang === 'ar' ? 'لم يتم العثور على تصاميم تطابق خيارات التصفية' : '未找到匹配的设计或动效'}
+              </p>
+              <button
+                onClick={handleResetFilters}
+                className="px-4 py-2 rounded-xl bg-slate-900 text-cyan-400 text-xs font-semibold border border-slate-800"
+              >
+                {lang === 'ar' ? 'إعادة ضبط البحث' : '重置搜索与分类'}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Cards Grid: 2 columns on mobile, expanding smoothly on tablet & desktop */}
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3.5 mt-2">
+                {paginatedGifts.map((gift) => (
                   <GiftCard
                     key={gift.id}
                     gift={gift}
                     lang={lang}
-                    onSelectGift={(g) => setSelectedGift(g)}
+                    isSelected={inspectedGift?.id === gift.id}
+                    onSelectGift={(g) => {
+                      setInspectedGift(g);
+                      setSelectedGift(g);
+                    }}
                     onQuickBuy={(g) => handleInitiatePurchase(g)}
                     onAddToCart={(g) => handleAddToCart(g)}
                   />
                 ))}
               </div>
-            )}
-          </main>
-        </div>
+
+              {/* Pagination Controls */}
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  window.scrollTo({ top: 250, behavior: 'smooth' });
+                }}
+                lang={lang}
+              />
+
+              {/* Large Inspection Preview Player (As in Reference Video at 0:25) */}
+              <SelectedDesignViewer
+                gift={inspectedGift || filteredGifts[0] || null}
+                lang={lang}
+                onOpenDetails={(g) => setSelectedGift(g)}
+                onAddToCart={(g) => handleAddToCart(g)}
+                onBuyWhatsApp={(g) => handleInitiatePurchase(g)}
+              />
+            </>
+          )}
+        </main>
       ) : (
-        /* DASHBOARD VIEW (Admin or User with permissions) */
+        /* DASHBOARD VIEW (Admin / Staff with Full Permissions) */
         <main className="flex-1 w-full">
           {(!user || (!['admin', 'employee', 'designer'].includes(user.role) && !user.permissions?.giftUploadAndPublish)) ? (
             <div className="max-w-xl mx-auto my-16 p-8 rounded-3xl bg-[#111520] border border-slate-800 text-center space-y-5 shadow-2xl">
@@ -552,7 +532,7 @@ ID الحساب: ${user.id}` : ''}
         onOpenTool={() => setIsSupportOpen(true)}
       />
 
-      {/* MODAL 1: Gift Live Video Preview & Specs Modal */}
+      {/* MODAL 1: Gift Details & Animation Specs Modal */}
       <GiftModal
         gift={selectedGift}
         onClose={() => setSelectedGift(null)}
@@ -560,7 +540,10 @@ ID الحساب: ${user.id}` : ''}
         onAddToCart={(g) => handleAddToCart(g)}
         onOpenPurchase={(g) => handleInitiatePurchase(g)}
         allGifts={gifts}
-        onSelectGift={(g) => setSelectedGift(g)}
+        onSelectGift={(g) => {
+          setInspectedGift(g);
+          setSelectedGift(g);
+        }}
       />
 
       {/* MODAL 2: Purchase Box ("صندوق شراء") */}
@@ -590,7 +573,7 @@ ID الحساب: ${user.id}` : ''}
         onCheckoutAll={handleCheckoutAll}
       />
 
-      {/* MODAL 5: Auth Modal (Dual role: Buyer exploration/trial/login & Staff employee login) */}
+      {/* MODAL 5: Auth Modal */}
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => {
@@ -604,11 +587,12 @@ ID الحساب: ${user.id}` : ''}
         pendingGift={pendingPurchaseGift}
       />
 
-      {/* MODAL 6: Customer Support & Custom Design */}
+      {/* MODAL 6: Contact Us Modal (Exact match to reference video) */}
       <SupportModal
         isOpen={isSupportOpen}
         onClose={() => setIsSupportOpen(false)}
         lang={lang}
+        siteSettings={siteSettings}
       />
 
       {/* MODAL 7: VIP Club Upgrade */}

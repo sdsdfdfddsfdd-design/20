@@ -44,9 +44,12 @@ export async function seedDatabase() {
       await setDoc(adminDoc, officialAdmin, { merge: true });
     }
 
-    // 2. Seed gifts
+    // 2. Seed gifts (only if never explicitly cleared by admin)
+    const initDoc = await getDoc(doc(db, 'settings', 'system_init'));
+    const isGiftsCleared = initDoc.exists() && initDoc.data()?.initialGiftsCleared;
+
     const giftsSnapshot = await getDocs(collections.gifts);
-    if (giftsSnapshot.empty) {
+    if (giftsSnapshot.empty && !isGiftsCleared) {
       console.log('Seeding real gifts into Firestore database...');
       for (const gift of INITIAL_GIFTS) {
         await setDoc(doc(db, 'gifts', gift.id), gift);
@@ -116,11 +119,7 @@ function sanitizeData<T extends Record<string, any>>(obj: T): Record<string, any
 export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
   return onSnapshot(collections.gifts, (snapshot) => {
     const gifts = snapshot.docs.map(d => d.data() as GiftItem);
-    if (gifts.length > 0) {
-      callback(gifts);
-    } else {
-      callback(INITIAL_GIFTS);
-    }
+    callback(gifts);
   }, (error) => {
     console.error('Error subscribing to gifts:', handleFirestoreError(error));
   });
@@ -152,6 +151,34 @@ export async function deleteGift(id: string) {
     await deleteDoc(doc(db, 'gifts', id));
   } catch (error) {
     console.error('Error deleting gift:', handleFirestoreError(error));
+    throw error;
+  }
+}
+
+/**
+ * Deletes ALL uploaded gifts from Firestore database
+ */
+export async function deleteAllGiftsFromDb(): Promise<number> {
+  try {
+    await ensureFirebaseAuth();
+    const giftsSnapshot = await getDocs(collections.gifts);
+    const deletePromises = giftsSnapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
+    await Promise.all(deletePromises);
+
+    // Record in Firestore system_init that initial gifts were cleared
+    try {
+      const settingsDoc = doc(db, 'settings', 'system_init');
+      await setDoc(settingsDoc, { 
+        initialGiftsCleared: true, 
+        lastClearedAt: new Date().toISOString() 
+      }, { merge: true });
+    } catch (sErr) {
+      console.warn('Could not record system_init marker:', sErr);
+    }
+
+    return giftsSnapshot.size;
+  } catch (error) {
+    console.error('Error deleting all gifts:', handleFirestoreError(error));
     throw error;
   }
 }
