@@ -18,7 +18,7 @@ import {
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
 import { SvgaPlayer } from './SvgaPlayer';
-import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl, globalMemoryCache } from '../utils/mediaStorage';
+import { resolveMediaUrl, getMediaFromIndexedDb, getProxyMediaUrl } from '../utils/mediaStorage';
 
 interface GiftModalProps {
   gift: GiftItem | null;
@@ -35,7 +35,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   onClose,
   lang,
   onOpenPurchase,
-  allGifts,
+  allGifts = [],
   onSelectGift
 }) => {
   const t = translations[lang];
@@ -57,31 +57,8 @@ export const GiftModal: React.FC<GiftModalProps> = ({
     setCurrentTime(0);
     setIsMuted(false);
 
-    let isMounted = true;
-    
-    // Check global memory cache synchronously first!
-    const memoryVideo = globalMemoryCache.get(gift.id) || globalMemoryCache.get(gift.videoUrl);
-    if (memoryVideo) {
-      setVideoSrc(memoryVideo);
-    } else {
-      const loadMedia = async () => {
-        try {
-          const cachedBlob = await getMediaFromIndexedDb(gift.id) || await getMediaFromIndexedDb(gift.videoUrl);
-          if (cachedBlob && isMounted) {
-            setVideoSrc(URL.createObjectURL(cachedBlob));
-            return;
-          }
-        } catch (e) {
-          console.warn('Could not read cached video on mount:', e);
-        }
-        
-        if (isMounted) {
-          setVideoSrc(resolveMediaUrl(gift.videoUrl));
-        }
-      };
-
-      loadMedia();
-    }
+    const initialUrl = resolveMediaUrl(gift.videoUrl);
+    setVideoSrc(initialUrl);
 
     const timer = setTimeout(() => {
       if (videoRef.current) {
@@ -99,12 +76,9 @@ export const GiftModal: React.FC<GiftModalProps> = ({
           }
         });
       }
-    }, 150);
+    }, 100);
 
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [gift]);
 
   // If video fails to load, try recovery from IndexedDB or Proxy
@@ -223,7 +197,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
     document.body.removeChild(element);
   };
 
-  const relatedGifts = allGifts.filter((g) => g.id !== gift.id).slice(0, 6);
+  const relatedGifts = (Array.isArray(allGifts) ? allGifts : []).filter((g) => g && gift && g.id !== gift.id).slice(0, 6);
 
   return (
     <div 
@@ -355,6 +329,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                     ref={videoRef}
                     key={videoSrc || gift.videoUrl}
                     src={videoSrc || gift.videoUrl}
+                    poster={gift.posterUrl ? resolveMediaUrl(gift.posterUrl) : undefined}
                     loop
                     autoPlay={isPlaying}
                     muted={isMuted}
@@ -377,7 +352,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                     }}
                     onError={handleVideoError}
                     onClick={handleTogglePlay}
-                    className="w-full h-full object-contain cursor-pointer select-none"
+                    className="w-full h-full object-contain cursor-pointer select-none transform-gpu"
                   />
 
                   {hasVideoError && (
@@ -572,7 +547,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
               </div>
 
               {/* Related Gifts Strip */}
-              {relatedGifts.length > 0 && (
+              {(relatedGifts?.length || 0) > 0 && (
                 <div className="pt-2 border-t border-slate-800/80">
                   <div className="text-[11px] font-bold text-slate-400 mb-2">
                     {t.relatedGifts}

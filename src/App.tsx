@@ -4,12 +4,10 @@ import { INITIAL_GIFTS } from './data/initialGifts';
 import { INITIAL_EMPLOYEES } from './data/initialEmployees';
 import { INITIAL_BANNERS } from './data/initialBanners';
 import { Header } from './components/Header';
-import { giftPreloader } from './utils/giftPreloader';
 import { HeroBanners } from './components/HeroBanners';
 import { CategoryBar } from './components/CategoryBar';
 import { GiftCard } from './components/GiftCard';
 import { Pagination } from './components/Pagination';
-import { SelectedDesignViewer } from './components/SelectedDesignViewer';
 import { GiftModal } from './components/GiftModal';
 import { PurchaseModal } from './components/PurchaseModal';
 import { DeliveryBoxModal } from './components/DeliveryBoxModal';
@@ -47,13 +45,6 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  // Background Cache/Preload trigger for 100% instant playback!
-  useEffect(() => {
-    if (gifts && gifts.length > 0) {
-      giftPreloader.start(gifts);
-    }
-  }, [gifts]);
 
   // Purchased Deliveries History
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
@@ -130,12 +121,9 @@ export default function App() {
     localStorage.setItem('jiawei_active_emp_id', activeEmployeeId);
   }, [activeEmployeeId]);
 
-  // Seed database once on mount if empty & warm up memory cache
+  // Seed database once on mount if empty
   useEffect(() => {
     seedDatabase();
-    import('./utils/mediaStorage').then(({ warmUpMemoryCache }) => {
-      warmUpMemoryCache().catch(() => {});
-    });
   }, []);
 
   // Cart State
@@ -221,7 +209,7 @@ export default function App() {
   // Deduplicate and stable-sort gifts (avoids duplicates across pages)
   const uniqueGifts = useMemo(() => {
     const map = new Map<string, GiftItem>();
-    gifts.forEach((g) => {
+    (Array.isArray(gifts) ? gifts : []).forEach((g) => {
       if (g && g.id && !map.has(g.id)) {
         map.set(g.id, g);
       }
@@ -231,16 +219,18 @@ export default function App() {
 
   // Filter Logic
   const filteredGifts = useMemo(() => {
-    return uniqueGifts.filter((gift) => {
+    return (uniqueGifts || []).filter((gift) => {
+      if (!gift) return false;
+
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTitle = gift.title.toLowerCase().includes(q);
-        const matchAr = gift.titleAr?.toLowerCase().includes(q);
-        const matchEn = gift.titleEn?.toLowerCase().includes(q);
-        const matchId = gift.id.toLowerCase().includes(q);
-        const matchTheme = gift.theme?.toLowerCase().includes(q);
-        const matchFormat = gift.formats?.some(f => f.name.toLowerCase().includes(q));
+        const matchTitle = (gift.title || '').toLowerCase().includes(q);
+        const matchAr = (gift.titleAr || '').toLowerCase().includes(q);
+        const matchEn = (gift.titleEn || '').toLowerCase().includes(q);
+        const matchId = (gift.id || '').toLowerCase().includes(q);
+        const matchTheme = (gift.theme || '').toLowerCase().includes(q);
+        const matchFormat = gift.formats?.some(f => (f.name || '').toLowerCase().includes(q));
         if (!matchTitle && !matchAr && !matchEn && !matchId && !matchTheme && !matchFormat) return false;
       }
 
@@ -250,7 +240,7 @@ export default function App() {
         const selectedCat = category.toLowerCase();
         
         if (selectedCat === 'frames') {
-          if (giftCat !== 'frames' && !giftCat.includes('frame') && !gift.title.includes('إطار') && !gift.titleAr?.includes('إطار')) return false;
+          if (giftCat !== 'frames' && !giftCat.includes('frame') && !gift.title?.includes('إطار') && !gift.titleAr?.includes('إطار')) return false;
         } else if (selectedCat === 'luxury_frame') {
           if (giftCat !== 'luxury_frame' && !(giftCat.includes('luxury') && giftCat.includes('frame')) && !gift.titleAr?.includes('إطار فاخر')) return false;
         } else if (selectedCat === 'medals') {
@@ -285,13 +275,13 @@ export default function App() {
 
   // Set default inspected gift
   useEffect(() => {
-    if (!inspectedGift && filteredGifts.length > 0) {
+    if (!inspectedGift && (filteredGifts?.length || 0) > 0) {
       setInspectedGift(filteredGifts[0]);
     }
   }, [filteredGifts, inspectedGift]);
 
   // Paginated gifts slice: Exactly 26 items per page!
-  const totalPages = Math.max(1, Math.ceil(filteredGifts.length / ITEMS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil((filteredGifts?.length || 0) / ITEMS_PER_PAGE));
 
   // Automatically clamp currentPage if totalPages shrinks
   useEffect(() => {
@@ -301,9 +291,10 @@ export default function App() {
   }, [totalPages, currentPage]);
 
   const paginatedGifts = useMemo(() => {
+    const list = Array.isArray(filteredGifts) ? filteredGifts : [];
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredGifts.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredGifts, currentPage]);
+    return list.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredGifts, currentPage, ITEMS_PER_PAGE]);
 
   const handleResetFilters = () => {
     setCategory('all');
@@ -481,22 +472,22 @@ ID الحساب: ${user.id}` : ''}
 
           {/* Design Cards Grid Section */}
           <section id="gifts-gallery-section" className="w-full flex flex-col scroll-mt-20">
-            {filteredGifts.length === 0 ? (
+            {(filteredGifts?.length || 0) === 0 ? (
               <div className="py-20 text-center text-slate-500 space-y-3">
                 <p className="text-sm">
                   {lang === 'ar' ? 'لم يتم العثور على تصاميم تطابق خيارات التصفية' : '未找到匹配的设计或动效'}
                 </p>
                 <button
                   onClick={handleResetFilters}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-cyan-400 text-xs font-semibold border border-slate-800"
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-cyan-400 text-xs font-semibold border border-slate-800 cursor-pointer"
                 >
                   {lang === 'ar' ? 'إعادة ضبط البحث' : '重置搜索与分类'}
                 </button>
               </div>
             ) : (
               <>
-                {/* Cards Grid: Large, spacious side-by-side rows comfortable for visual inspection */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 sm:gap-4.5 md:gap-5 lg:gap-6 mt-3">
+                {/* Clean Responsive Cards Grid */}
+                <div className="grid grid-cols-2 min-[480px]:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4 md:gap-5 mt-4">
                   {paginatedGifts.map((gift) => (
                     <GiftCard
                       key={gift.id}
@@ -531,17 +522,6 @@ ID الحساب: ${user.id}` : ''}
                   }}
                   lang={lang}
                 />
-
-                {/* Large Inspection Preview Player (As in Reference Video at 0:25) */}
-                <div className="w-full max-w-4xl mx-auto mt-4">
-                  <SelectedDesignViewer
-                    gift={inspectedGift || filteredGifts[0] || null}
-                    lang={lang}
-                    onOpenDetails={(g) => setSelectedGift(g)}
-                    onAddToCart={(g) => handleAddToCart(g)}
-                    onBuyWhatsApp={(g) => handleInitiatePurchase(g)}
-                  />
-                </div>
               </>
             )}
           </section>

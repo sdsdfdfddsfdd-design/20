@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Language } from '../types';
 
 export interface CategoryItem {
@@ -24,7 +24,6 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Default core categories matching reference video
   const defaultCategories: CategoryItem[] = [
     { id: 'all', name: 'All Categories', nameAr: 'كافة التصنيفات', nameEn: 'All Categories' },
     { id: 'frames', name: 'Avatar Frames', nameAr: 'إطارات الأفاتار', nameEn: 'Avatar Frames' },
@@ -40,10 +39,9 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
     { id: 'general', name: 'Featured VFX', nameAr: 'مؤثرات عامة', nameEn: 'Featured VFX' },
   ];
 
-  // Merge any dynamic categories from database
   const mergedCategories: CategoryItem[] = [...defaultCategories];
-  categories.forEach((cat) => {
-    if (!mergedCategories.some((c) => c.id === cat.id)) {
+  (Array.isArray(categories) ? categories : []).forEach((cat) => {
+    if (cat && !mergedCategories.some((c) => c.id === cat.id)) {
       mergedCategories.push({
         id: cat.id,
         name: cat.name,
@@ -71,7 +69,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
       {/* Scroll Left Button on Desktop */}
       <button
         onClick={() => handleScroll('left')}
-        className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-900/90 border border-slate-700 items-center justify-center text-slate-300 hover:text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+        className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-900/90 border border-slate-700 items-center justify-center text-slate-300 hover:text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
         aria-label="Scroll Left"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -104,7 +102,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
       {/* Scroll Right Button on Desktop */}
       <button
         onClick={() => handleScroll('right')}
-        className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-900/90 border border-slate-700 items-center justify-center text-slate-300 hover:text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+        className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-900/90 border border-slate-700 items-center justify-center text-slate-300 hover:text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
         aria-label="Scroll Right"
       >
         <ChevronRight className="w-4 h-4" />

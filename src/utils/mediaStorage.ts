@@ -3,15 +3,12 @@
  * Handles persistent server file storage via /api/upload and IndexedDB caching for offline resilience.
  */
 
-export const DB_NAME = 'jiawei_media_vault';
-export const DB_VERSION = 1;
-export const STORE_NAME = 'media_blobs';
-
-// Global in-memory cache map to hold synchronous Object URLs
-export const globalMemoryCache = new Map<string, string>();
+const DB_NAME = 'jiawei_media_vault';
+const DB_VERSION = 1;
+const STORE_NAME = 'media_blobs';
 
 // Open IndexedDB database
-export function openMediaDb(): Promise<IDBDatabase> {
+function openMediaDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
       reject(new Error('IndexedDB not supported in this browser'));
@@ -30,39 +27,6 @@ export function openMediaDb(): Promise<IDBDatabase> {
 }
 
 /**
- * Pre-populates the in-memory cache with previously stored items for instant, synchronous access
- */
-export async function warmUpMemoryCache(): Promise<void> {
-  try {
-    const db = await openMediaDb();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.getAll();
-    
-    return new Promise((resolve) => {
-      request.onsuccess = () => {
-        const results = request.result || [];
-        for (const item of results) {
-          if (item && item.blob) {
-            try {
-              const url = URL.createObjectURL(item.blob);
-              globalMemoryCache.set(item.id, url);
-              if (item.filename) {
-                globalMemoryCache.set(item.filename, url);
-              }
-            } catch (err) {}
-          }
-        }
-        resolve();
-      };
-      request.onerror = () => resolve();
-    });
-  } catch (e) {
-    console.warn('Memory cache warm up failed:', e);
-  }
-}
-
-/**
  * Saves a media Blob / File to IndexedDB
  */
 export async function saveMediaToIndexedDb(id: string, blob: Blob | File, filename?: string): Promise<void> {
@@ -77,16 +41,6 @@ export async function saveMediaToIndexedDb(id: string, blob: Blob | File, filena
       filename: filename || id,
       timestamp: Date.now()
     });
-    
-    // Save to global in-memory Object URL cache for zero-latency retrieval
-    try {
-      const memoryUrl = URL.createObjectURL(blob);
-      globalMemoryCache.set(id, memoryUrl);
-      if (filename) {
-        globalMemoryCache.set(filename, memoryUrl);
-      }
-    } catch (err) {}
-
     return new Promise((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -108,18 +62,7 @@ export async function getMediaFromIndexedDb(id: string): Promise<Blob | null> {
     return new Promise((resolve) => {
       request.onsuccess = () => {
         if (request.result && request.result.blob) {
-          const blob = request.result.blob;
-          // Populate the memory cache on demand
-          if (!globalMemoryCache.has(id)) {
-            try {
-              const memoryUrl = URL.createObjectURL(blob);
-              globalMemoryCache.set(id, memoryUrl);
-              if (request.result.filename) {
-                globalMemoryCache.set(request.result.filename, memoryUrl);
-              }
-            } catch (err) {}
-          }
-          resolve(blob);
+          resolve(request.result.blob);
         } else {
           resolve(null);
         }
@@ -192,7 +135,7 @@ export function resolveMediaUrl(url?: string, useProxy = false): string {
     return trimmed.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace(/\?dl=[01]/, '');
   }
 
-  // Automatically proxy top4top (all TLDs/subdomains), imgbb, postimg, streamable, and external MP4/video URLs when needed
+  // Automatically proxy sites with strict hotlink blocking or scraping requirements
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     if (
       useProxy ||
@@ -201,15 +144,7 @@ export function resolveMediaUrl(url?: string, useProxy = false): string {
       trimmed.includes('postimg.cc') ||
       trimmed.includes('streamable.com') ||
       trimmed.includes('catbox.moe') ||
-      trimmed.includes('gofile.io') ||
-      trimmed.includes('discordapp.com') ||
-      trimmed.includes('vimeo.com') ||
-      trimmed.includes('bunnycdn.com') ||
-      trimmed.includes('r2.cloudflarestorage.com') ||
-      trimmed.includes('cloudinary.com') ||
-      trimmed.toLowerCase().includes('.mp4') ||
-      trimmed.toLowerCase().includes('.webm') ||
-      trimmed.toLowerCase().includes('.mov')
+      trimmed.includes('gofile.io')
     ) {
       return `/api/proxy-media?url=${encodeURIComponent(trimmed)}`;
     }

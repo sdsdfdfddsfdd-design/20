@@ -22,7 +22,7 @@ interface HeroBannersProps {
 
 export const HeroBanners: React.FC<HeroBannersProps> = ({
   lang,
-  banners,
+  banners = [],
   categories = [],
   selectedCategory = 'all',
   onSelectQuickCategory,
@@ -36,19 +36,19 @@ export const HeroBanners: React.FC<HeroBannersProps> = ({
   const cleanWhatsapp = whatsappNumber.replace(/[^0-9]/g, '');
 
   // Active banners list from props or fallback
-  const activeBanners = (banners && banners.length > 0)
-    ? banners.filter(b => b.isActive !== false)
-    : INITIAL_BANNERS;
+  const activeBanners = (Array.isArray(banners) && banners.length > 0)
+    ? banners.filter(b => b && b.isActive !== false)
+    : (INITIAL_BANNERS || []);
 
   useEffect(() => {
-    if (activeBanners.length <= 1) return;
+    if (!activeBanners || activeBanners.length <= 1) return;
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % activeBanners.length);
+      setCurrentSlide((prev) => (prev + 1) % (activeBanners.length || 1));
     }, 6000);
     return () => clearInterval(timer);
-  }, [activeBanners.length]);
+  }, [activeBanners?.length]);
 
-  const current = activeBanners[currentSlide] || activeBanners[0];
+  const current = (activeBanners && activeBanners[currentSlide]) || (activeBanners && activeBanners[0]) || null;
 
   const handleBannerClick = () => {
     if (!current) return;
@@ -138,7 +138,7 @@ export const HeroBanners: React.FC<HeroBannersProps> = ({
         )}
 
         {/* Carousel Slide Indicators */}
-        {activeBanners.length > 1 && (
+        {(activeBanners?.length || 0) > 1 && (
           <div className="absolute bottom-2.5 right-3 z-10 flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/10">
             {activeBanners.map((_, idx) => (
               <button
