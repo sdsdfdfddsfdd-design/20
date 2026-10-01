@@ -33,8 +33,21 @@ export default function App() {
   // Main View: Storefront vs Admin Dashboard
   const [currentView, setCurrentView] = useState<'store' | 'dashboard'>('store');
 
-  // Gifts State with Firebase persistence
-  const [gifts, setGifts] = useState<GiftItem[]>(() => INITIAL_GIFTS.filter(g => !isDummyGift(g)));
+  // Gifts State with Firebase persistence - loads real gifts, never fake initial items
+  const [gifts, setGifts] = useState<GiftItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('jiawei_custom_gifts_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter(g => !isDummyGift(g));
+          if (clean.length > 0) return clean;
+        }
+      }
+    } catch(e) {}
+    return [];
+  });
+  const [isGiftsLoading, setIsGiftsLoading] = useState(true);
 
   useEffect(() => {
     // Purge any dummy test gifts immediately on app mount
@@ -42,6 +55,7 @@ export default function App() {
 
     const unsubscribe = subscribeToGifts((newGifts) => {
       setGifts(newGifts.filter(g => !isDummyGift(g)));
+      setIsGiftsLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -479,7 +493,21 @@ ID الحساب: ${user.id}` : ''}
 
           {/* Design Cards Grid Section */}
           <section id="gifts-gallery-section" className="w-full flex flex-col scroll-mt-20">
-            {(filteredGifts?.length || 0) === 0 ? (
+            {isGiftsLoading && gifts.length === 0 ? (
+              /* Luxury Shimmer Skeleton Grid during initial fetch */
+              <div className="grid grid-cols-2 min-[480px]:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4 md:gap-5 mt-4">
+                {Array.from({ length: 10 }).map((_, idx) => (
+                  <div key={idx} className="rounded-2xl bg-[#0c1017] border border-slate-800/80 p-3 flex flex-col space-y-3 animate-pulse shadow-lg">
+                    <div className="w-full aspect-[4/5] rounded-xl bg-slate-800/40"></div>
+                    <div className="h-4 bg-slate-800/60 rounded-md w-3/4"></div>
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="h-4 bg-cyan-950/60 rounded w-1/3"></div>
+                      <div className="h-4 bg-slate-800/40 rounded w-1/4"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (filteredGifts?.length || 0) === 0 ? (
               <div className="py-20 text-center text-slate-500 space-y-3">
                 <p className="text-sm">
                   {lang === 'ar' ? 'لم يتم العثور على تصاميم تطابق خيارات التصفية' : '未找到匹配的设计或动效'}

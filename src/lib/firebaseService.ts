@@ -57,17 +57,8 @@ export async function seedDatabase() {
       await setDoc(adminDoc, officialAdmin, { merge: true });
     }
 
-    // 2. Seed gifts (only if never explicitly cleared by admin and collection is empty)
-    const initDoc = await getDoc(doc(db, 'settings', 'system_init'));
-    const isGiftsCleared = initDoc.exists() && initDoc.data()?.initialGiftsCleared;
-
-    const giftsSnapshot = await getDocs(collections.gifts);
-    if (giftsSnapshot.empty && !isGiftsCleared) {
-      console.log('Seeding real gifts into Firestore database...');
-      for (const gift of INITIAL_GIFTS) {
-        await setDoc(doc(db, 'gifts', gift.id), gift);
-      }
-    }
+    // 2. Gifts are user-created; do not seed fake mock templates
+    // Only real gifts uploaded by creators and staff are displayed.
 
     // 3. Seed banners
     const bannersSnapshot = await getDocs(collections.banners);
@@ -142,6 +133,13 @@ function sanitizeData<T extends Record<string, any>>(obj: T): Record<string, any
   return clean;
 }
 
+// Explicit IDs of template mock/dummy gifts from initial templates
+export const INITIAL_DUMMY_IDS = new Set([
+  'NO.243751', 'NO.254391', 'NO.253994', 'NO.252990', 'NO.250661',
+  'NO.249888', 'NO.248301', 'NO.247290', 'NO.246112', 'NO.245889',
+  'NO.244302', 'NO.243110'
+]);
+
 // Helper to detect any artificially created dummy/test gifts to satisfy user request
 export const isDummyGift = (gift: Partial<GiftItem>): boolean => {
   if (!gift || !gift.id) return false;
@@ -149,6 +147,23 @@ export const isDummyGift = (gift: Partial<GiftItem>): boolean => {
   if (gift.id.startsWith('DUMMY_') || gift.id.startsWith('MOCK_')) {
     return true;
   }
+  // Match initial template dummy items
+  if (INITIAL_DUMMY_IDS.has(gift.id)) {
+    return true;
+  }
+  // Match dummy template external media
+  if (gift.videoUrl && gift.videoUrl.includes('assets.mixkit.co')) return true;
+  if (gift.deliveryUrl && gift.deliveryUrl.includes('cdn.jwtexiao.com/downloads/vfx/')) return true;
+  if (gift.titleAr === 'زهرة القمر الطائر' && gift.price === 49) return true;
+  if (gift.titleAr === 'رقصة تحت ضوء القمر' && gift.price === 29) return true;
+  if (gift.titleAr === 'تشانغ إي تحلق للقمر' && gift.price === 35) return true;
+  if (gift.titleAr === 'صدى مملكة الجليد' && gift.price === 28) return true;
+  if (gift.titleAr === 'عهد السراب الفضي' && gift.price === 45) return true;
+  if (gift.titleAr === '999 وردة حمراء متفتحة' && gift.price === 32) return true;
+  if (gift.titleAr === 'خريف القمر المنسوج' && gift.price === 19) return true;
+  if (gift.titleAr === 'أرنب النجوم الكونية' && gift.price === 24) return true;
+  if (gift.titleAr === 'إلهة الشفق القطبي' && gift.price === 38) return true;
+  if (gift.titleAr === 'المحارب المدرع الأسود' && gift.price === 34) return true;
   return false;
 };
 
@@ -209,17 +224,14 @@ export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
       const map = new Map<string, GiftItem>();
 
       // Firestore cloud gifts take absolute priority
-      gifts.forEach(g => map.set(g.id, g));
+      gifts.forEach(g => {
+        if (!isDummyGift(g)) map.set(g.id, g);
+      });
       cleanLocal.forEach((g: GiftItem) => {
-        if (!map.has(g.id)) map.set(g.id, g);
+        if (!map.has(g.id) && !isDummyGift(g)) map.set(g.id, g);
       });
 
-      // Only if no gifts exist at all and never cleared, fall back to initial gifts
-      if (map.size === 0 && !isCleared) {
-        INITIAL_GIFTS.filter(g => !isDummyGift(g)).forEach(g => map.set(g.id, g));
-      }
-
-      const allGifts = Array.from(map.values());
+      const allGifts = Array.from(map.values()).filter(g => !isDummyGift(g));
       // Sort newest gifts first so any newly uploaded gift immediately reflects at the top of the storefront!
       allGifts.sort((a, b) => {
         const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -247,9 +259,6 @@ export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
       const cleanLocal = localGifts.filter(g => !isDummyGift(g));
       const map = new Map<string, GiftItem>();
       cleanLocal.forEach((g: GiftItem) => map.set(g.id, g));
-      if (map.size === 0) {
-        INITIAL_GIFTS.filter(g => !isDummyGift(g)).forEach(g => map.set(g.id, g));
-      }
       callback(Array.from(map.values()));
     } catch(e) {}
   });
