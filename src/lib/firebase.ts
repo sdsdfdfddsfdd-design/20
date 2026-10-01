@@ -15,27 +15,34 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with local persistence caching, useful for React apps
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache(),
-});
+// Initialize Firestore with explicit database ID from config
+export const db = getFirestore(app, config.firestoreDatabaseId || '(default)');
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Ensure user is authenticated anonymously to satisfy Firestore security rules
+// Ensure user is authenticated anonymously if supported
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 export function ensureFirebaseAuth(): Promise<void> {
   return new Promise((resolve) => {
-    onAuthStateChanged(auth, (user) => {
+    if (auth.currentUser) {
+      resolve();
+      return;
+    }
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
+        unsub();
         resolve();
       } else {
         signInAnonymously(auth)
-          .then(() => resolve())
+          .then(() => {
+            unsub();
+            resolve();
+          })
           .catch((err) => {
             console.warn('Anonymous auth note (proceeding without crash):', err);
+            unsub();
             resolve();
           });
       }

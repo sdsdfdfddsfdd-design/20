@@ -206,7 +206,7 @@ export default function App() {
   const ITEMS_PER_PAGE = Math.max(1, siteSettings?.giftsPerPage || 26);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Deduplicate and stable-sort gifts (avoids duplicates across pages)
+  // Deduplicate and stable-sort gifts (newest first, avoids duplicates across pages)
   const uniqueGifts = useMemo(() => {
     const map = new Map<string, GiftItem>();
     (Array.isArray(gifts) ? gifts : []).forEach((g) => {
@@ -214,7 +214,14 @@ export default function App() {
         map.set(g.id, g);
       }
     });
-    return Array.from(map.values());
+    const list = Array.from(map.values());
+    list.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA && timeB && timeA !== timeB) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
+    return list;
   }, [gifts]);
 
   // Filter Logic

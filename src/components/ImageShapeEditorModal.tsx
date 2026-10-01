@@ -141,7 +141,7 @@ export const ImageShapeEditorModal: React.FC<ImageShapeEditorModalProps> = ({
     setIsProcessing(true);
     try {
       const offscreen = document.createElement('canvas');
-      const finalDataUrl = renderCanvas(offscreen, 600);
+      const finalDataUrl = renderCanvas(offscreen, 380);
       if (finalDataUrl) {
         onApply(finalDataUrl);
         onClose();

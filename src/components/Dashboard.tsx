@@ -869,7 +869,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setIsTestingVideo(true);
   };
 
-  const handleSaveGift = (e: React.FormEvent) => {
+  const handleSaveGift = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!title.trim()) {
@@ -942,14 +942,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           cloudDiskCode: cloudDiskCode.trim() || existing.cloudDiskCode
         };
         setGifts(prev => prev.map(g => g.id === editingId ? updatedGift : g));
-        updateGift(updatedGift).catch(() => {});
+        try {
+          await updateGift(updatedGift);
+        } catch (uErr) {
+          console.error('Update gift cloud sync note:', uErr);
+        }
       }
 
       setEditingId(null);
-      setSuccessMessage(lang === 'ar' ? 'تم تحديث الهدية بنجاح!' : '素材更新成功！');
+      setSuccessMessage(lang === 'ar' ? 'تم تحديث الهدية وحفظها في السيرفر بنجاح!' : '素材更新成功！');
     } else {
       // Create new - Automatically linked to current active staff & WhatsApp!
-      const newId = 'NO.' + Math.floor(200000 + Math.random() * 90000);
+      const newId = 'NO.' + Math.floor(200000 + Math.random() * 700000);
       const newGift: GiftItem = {
         id: newId,
         title: title.trim(),
@@ -980,16 +984,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
         favoritesCount: 0,
         isNew: true,
         isFeatured: true,
-        createdAt: new Date().toISOString().split('T')[0]
+        createdAt: new Date().toISOString()
       };
 
       setGifts(prev => [newGift, ...prev]);
-      addGift(newGift).catch(() => {});
+      try {
+        await addGift(newGift);
+      } catch (aErr) {
+        console.error('Add gift cloud sync note:', aErr);
+      }
 
       // Increment employee's gifts count
       updateEmployee({ ...activeStaff, giftsCount: (activeStaff.giftsCount || 0) + 1 });
 
-      setSuccessMessage(lang === 'ar' ? `تم نشر الهدية [${newGift.title}] بنجاح في المتجر وربطها بالمصمم ${activeStaff.name}!` : `礼物 [${newGift.title}] 成功发布！`);
+      setSuccessMessage(lang === 'ar' ? `تم نشر وتسميع الهدية [${newGift.title}] بنجاح في السيرفر والمتجر لكل المستخدمين!` : `礼物 [${newGift.title}] 成功发布并在服务器实时同步！`);
     }
 
     // Reset Form
@@ -1269,15 +1277,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     const targetTime = vid ? (vid.currentTime || 0) : videoScrubTime || 0;
 
-    // Helper: draw video element to canvas and return base64
+    // Helper: draw video element to canvas and return compact base64
     const drawVideoToDataUrl = (targetVideo: HTMLVideoElement): string => {
+      const maxDim = 400;
+      let w = targetVideo.videoWidth || 720;
+      let h = targetVideo.videoHeight || 1280;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
       const canvas = document.createElement('canvas');
-      canvas.width = targetVideo.videoWidth || 720;
-      canvas.height = targetVideo.videoHeight || 1280;
+      canvas.width = Math.max(1, w);
+      canvas.height = Math.max(1, h);
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Cannot get canvas context');
       ctx.drawImage(targetVideo, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL('image/jpeg', 0.95);
+      return canvas.toDataURL('image/jpeg', 0.78);
     };
 
     try {

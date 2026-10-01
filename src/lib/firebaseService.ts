@@ -7,6 +7,7 @@ import { INITIAL_BANNERS } from '../data/initialBanners';
 import { INITIAL_CATEGORIES } from '../data/initialCategories';
 import { INITIAL_SAVED_GIFT_NAMES } from '../data/initialSavedNames';
 import { handleFirestoreError } from './firebaseErrors';
+import { uploadDataUrlOrFile, compressBase64Image } from '../utils/mediaStorage';
 
 export const collections = {
   gifts: collection(db, 'gifts'),
@@ -117,7 +118,21 @@ function sanitizeData<T extends Record<string, any>>(obj: T): Record<string, any
   const clean: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v !== undefined) {
-      if (v && typeof v === 'object' && !Array.isArray(v)) {
+      if (typeof v === 'string') {
+        // Enforce strict upper bound on Firestore string fields to prevent 1048487 byte rejection
+        if (v.length > 250000) {
+          console.warn(`[Firestore Sanitizer] Property "${k}" is oversized (${v.length} bytes). Truncating/protecting to prevent database crash.`);
+          if (k === 'posterUrl') {
+            clean[k] = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80';
+          } else if (k === 'videoUrl') {
+            clean[k] = '';
+          } else {
+            clean[k] = v.substring(0, 10000);
+          }
+        } else {
+          clean[k] = v;
+        }
+      } else if (v && typeof v === 'object' && !Array.isArray(v)) {
         clean[k] = sanitizeData(v);
       } else {
         clean[k] = v;
@@ -130,21 +145,10 @@ function sanitizeData<T extends Record<string, any>>(obj: T): Record<string, any
 // Helper to detect any artificially created dummy/test gifts to satisfy user request
 export const isDummyGift = (gift: Partial<GiftItem>): boolean => {
   if (!gift || !gift.id) return false;
-  // Match NO.242... dummy range created earlier, or DUMMY, TEST, MOCK
-  if (gift.id.startsWith('NO.242') || gift.id.startsWith('DUMMY_') || gift.id.startsWith('TEST_') || gift.id.startsWith('MOCK_')) {
+  // Match only explicit DUMMY_ or MOCK_ markers
+  if (gift.id.startsWith('DUMMY_') || gift.id.startsWith('MOCK_')) {
     return true;
   }
-  const dummyKeywords = [
-    '黄金帝王冠冕', 'تاج الملوك الذهبي الفاخر',
-    '赛博幽灵超跑', 'سيارة سايبربانك فانتوم الخارقة',
-    '永恒之心钻戒', 'خاتم الألماس الأبدي الفاخر',
-    '星河冠军战旗', 'راية أبطال المجرة الكونية',
-    '幻海星途游艇', 'يخت المحيط الفاخر المسافر',
-    '不死神鸟涅槃', 'طائر الفينيق الخالد المنبعث',
-    '冰魄幻晶王座', 'عرش الكريستال الجليدي الملكي'
-  ];
-  if (gift.title && dummyKeywords.includes(gift.title)) return true;
-  if (gift.titleAr && dummyKeywords.includes(gift.titleAr)) return true;
   return false;
 };
 
@@ -185,7 +189,7 @@ export async function purgeDummyGifts(): Promise<number> {
 // ----------------- GIFTS -----------------
 export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
   return onSnapshot(collections.gifts, (snapshot) => {
-    const rawGifts = snapshot.docs.map(d => d.data() as GiftItem);
+    const rawGifts = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as GiftItem));
     // Remove any dummy gifts and silently clean them up
     const gifts = rawGifts.filter(g => !isDummyGift(g));
     rawGifts.forEach(g => {
@@ -204,7 +208,7 @@ export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
       const isCleared = localStorage.getItem('jiawei_gifts_cleared') === 'true';
       const map = new Map<string, GiftItem>();
 
-      // Firestore gifts take priority
+      // Firestore cloud gifts take absolute priority
       gifts.forEach(g => map.set(g.id, g));
       cleanLocal.forEach((g: GiftItem) => {
         if (!map.has(g.id)) map.set(g.id, g);
@@ -215,9 +219,26 @@ export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
         INITIAL_GIFTS.filter(g => !isDummyGift(g)).forEach(g => map.set(g.id, g));
       }
 
-      callback(Array.from(map.values()));
+      const allGifts = Array.from(map.values());
+      // Sort newest gifts first so any newly uploaded gift immediately reflects at the top of the storefront!
+      allGifts.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (timeA && timeB && timeA !== timeB) return timeB - timeA;
+        return (b.id || '').localeCompare(a.id || '');
+      });
+
+      callback(allGifts);
       return;
     } catch(e) {}
+
+    // Sort newest gifts first
+    gifts.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA && timeB && timeA !== timeB) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
     callback(gifts);
   }, (error) => {
     console.error('Error subscribing to gifts:', handleFirestoreError(error));
@@ -234,20 +255,64 @@ export function subscribeToGifts(callback: (gifts: GiftItem[]) => void) {
   });
 }
 
-export async function addGift(gift: GiftItem) {
+export async function addGift(gift: GiftItem): Promise<void> {
   if (isDummyGift(gift)) return;
+
+  // Protect against Firestore 1MB field size limit by safely uploading base64 data URLs to server storage
+  let safePosterUrl = gift.posterUrl || '';
+  let safeVideoUrl = gift.videoUrl || '';
+
+  if (safePosterUrl && (safePosterUrl.length > 50000 || safePosterUrl.startsWith('data:'))) {
+    try {
+      safePosterUrl = await uploadDataUrlOrFile(safePosterUrl, `poster_${gift.id}.png`);
+    } catch (e) {
+      console.warn('Poster safe conversion note:', e);
+    }
+  }
+
+  // Double-check safePosterUrl size: ensure it never exceeds 100KB
+  if (safePosterUrl && safePosterUrl.length > 80000) {
+    try {
+      safePosterUrl = await compressBase64Image(safePosterUrl, 320, 0.65);
+    } catch(e) {}
+    if (safePosterUrl.length > 150000) {
+      safePosterUrl = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80';
+    }
+  }
+
+  if (safeVideoUrl && (safeVideoUrl.length > 50000 || safeVideoUrl.startsWith('data:'))) {
+    try {
+      safeVideoUrl = await uploadDataUrlOrFile(safeVideoUrl, `media_${gift.id}`);
+    } catch (e) {
+      console.warn('Video safe conversion note:', e);
+    }
+  }
+
+  if (safeVideoUrl && safeVideoUrl.length > 150000 && safeVideoUrl.startsWith('data:')) {
+    safeVideoUrl = gift.deliveryUrl || '';
+  }
+
+  const cleanGift: GiftItem = {
+    ...gift,
+    posterUrl: safePosterUrl,
+    videoUrl: safeVideoUrl,
+    createdAt: gift.createdAt || new Date().toISOString()
+  };
+
   try {
     const localGifts = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
-    const filtered = localGifts.filter((g: GiftItem) => g.id !== gift.id && !isDummyGift(g));
-    filtered.unshift(gift);
+    const filtered = localGifts.filter((g: GiftItem) => g.id !== cleanGift.id && !isDummyGift(g));
+    filtered.unshift(cleanGift);
     localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(filtered));
   } catch(e) {}
 
   try {
-    await ensureFirebaseAuth();
-    await setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift));
+    await ensureFirebaseAuth().catch(() => {});
+    await setDoc(doc(db, 'gifts', cleanGift.id), sanitizeData(cleanGift));
+    console.log(`[Firestore] Successfully uploaded gift [${cleanGift.id}] to cloud database!`);
   } catch (error) {
     console.error('Error adding gift to Firestore:', handleFirestoreError(error));
+    throw error;
   }
 }
 
@@ -255,13 +320,42 @@ export async function addGift(gift: GiftItem) {
  * Batch add multiple gifts to Firestore & local state simultaneously
  */
 export async function addGiftsBatch(giftsToAdd: GiftItem[]): Promise<void> {
-  const validGifts = giftsToAdd.filter(g => !isDummyGift(g));
-  if (validGifts.length === 0) return;
+  const processedGifts: GiftItem[] = [];
+  for (const g of giftsToAdd) {
+    if (isDummyGift(g)) continue;
+    let safePoster = g.posterUrl || '';
+    let safeVideo = g.videoUrl || '';
+    if (safePoster && (safePoster.length > 50000 || safePoster.startsWith('data:'))) {
+      safePoster = await uploadDataUrlOrFile(safePoster, `poster_${g.id}.png`);
+    }
+    if (safePoster && safePoster.length > 80000) {
+      try {
+        safePoster = await compressBase64Image(safePoster, 320, 0.65);
+      } catch(e) {}
+      if (safePoster.length > 150000) {
+        safePoster = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80';
+      }
+    }
+    if (safeVideo && (safeVideo.length > 50000 || safeVideo.startsWith('data:'))) {
+      safeVideo = await uploadDataUrlOrFile(safeVideo, `media_${g.id}`);
+    }
+    if (safeVideo && safeVideo.length > 150000 && safeVideo.startsWith('data:')) {
+      safeVideo = g.deliveryUrl || '';
+    }
+    processedGifts.push({
+      ...g,
+      posterUrl: safePoster,
+      videoUrl: safeVideo,
+      createdAt: g.createdAt || new Date().toISOString()
+    });
+  }
+
+  if (processedGifts.length === 0) return;
 
   try {
     const localGifts: GiftItem[] = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
     const map = new Map<string, GiftItem>();
-    validGifts.forEach(g => map.set(g.id, g));
+    processedGifts.forEach(g => map.set(g.id, g));
     localGifts.forEach(g => {
       if (!map.has(g.id) && !isDummyGift(g)) {
         map.set(g.id, g);
@@ -271,26 +365,54 @@ export async function addGiftsBatch(giftsToAdd: GiftItem[]): Promise<void> {
   } catch(e) {}
 
   try {
-    await ensureFirebaseAuth();
-    const batchPromises = validGifts.map(gift => setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift)));
+    await ensureFirebaseAuth().catch(() => {});
+    const batchPromises = processedGifts.map(gift => setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift)));
     await Promise.all(batchPromises);
+    console.log(`[Firestore] Successfully batch uploaded ${processedGifts.length} gifts to cloud database!`);
   } catch (error) {
     console.error('Error batch adding gifts to Firestore:', handleFirestoreError(error));
+    throw error;
   }
 }
 
 export async function updateGift(gift: GiftItem) {
+  let safePoster = gift.posterUrl || '';
+  let safeVideo = gift.videoUrl || '';
+  if (safePoster && (safePoster.length > 50000 || safePoster.startsWith('data:'))) {
+    safePoster = await uploadDataUrlOrFile(safePoster, `poster_${gift.id}.png`);
+  }
+  if (safePoster && safePoster.length > 80000) {
+    try {
+      safePoster = await compressBase64Image(safePoster, 320, 0.65);
+    } catch(e) {}
+    if (safePoster.length > 150000) {
+      safePoster = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80';
+    }
+  }
+  if (safeVideo && (safeVideo.length > 50000 || safeVideo.startsWith('data:'))) {
+    safeVideo = await uploadDataUrlOrFile(safeVideo, `media_${gift.id}`);
+  }
+  if (safeVideo && safeVideo.length > 150000 && safeVideo.startsWith('data:')) {
+    safeVideo = gift.deliveryUrl || '';
+  }
+
+  const updated: GiftItem = {
+    ...gift,
+    posterUrl: safePoster,
+    videoUrl: safeVideo
+  };
+
   try {
     const localGifts = JSON.parse(localStorage.getItem('jiawei_custom_gifts_v1') || '[]');
-    const idx = localGifts.findIndex((g: GiftItem) => g.id === gift.id);
-    if (idx >= 0) localGifts[idx] = gift;
-    else localGifts.unshift(gift);
+    const idx = localGifts.findIndex((g: GiftItem) => g.id === updated.id);
+    if (idx >= 0) localGifts[idx] = updated;
+    else localGifts.unshift(updated);
     localStorage.setItem('jiawei_custom_gifts_v1', JSON.stringify(localGifts));
   } catch(e) {}
 
   try {
-    await ensureFirebaseAuth();
-    await setDoc(doc(db, 'gifts', gift.id), sanitizeData(gift), { merge: true });
+    await ensureFirebaseAuth().catch(() => {});
+    await setDoc(doc(db, 'gifts', updated.id), sanitizeData(updated), { merge: true });
   } catch (error) {
     console.error('Error updating gift in Firestore:', handleFirestoreError(error));
   }

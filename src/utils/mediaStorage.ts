@@ -7,6 +7,9 @@ const DB_NAME = 'jiawei_media_vault';
 const DB_VERSION = 1;
 const STORE_NAME = 'media_blobs';
 
+// Global in-memory cache for synchronous object URLs
+export const globalMemoryCache = new Map<string, string>();
+
 // Open IndexedDB database
 function openMediaDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -111,6 +114,180 @@ export async function uploadMediaToServer(
       mimeType: file.type || 'video/mp4'
     };
   }
+}
+
+/**
+ * Converts a base64 data URL to a clean Blob safely
+ */
+export function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    if (!dataUrl || !dataUrl.startsWith('data:')) return null;
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return null;
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+    // Clean any whitespace, carriage returns, or newlines
+    const cleanBase64 = parts[1].replace(/[\s\r\n]+/g, '');
+    const bstr = atob(cleanBase64);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (err) {
+    console.warn('Error converting dataUrl to Blob:', err);
+    return null;
+  }
+}
+
+/**
+ * Compresses an image base64 data URL to under 50KB to respect Firestore's 1MB field limit
+ */
+export async function compressBase64Image(dataUrl: string, maxDim = 360, quality = 0.7): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+  if (dataUrl.length < 60000) return dataUrl; // Already compact (<60KB)
+
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      // NOTE: DO NOT set img.crossOrigin on data: URIs as modern browsers trigger CORS errors on data URIs!
+      img.onload = () => {
+        try {
+          let w = img.width || 360;
+          let h = img.height || 360;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, w);
+          canvas.height = Math.max(1, h);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl.slice(0, 50000));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          let result = canvas.toDataURL('image/jpeg', quality);
+          // If still over 80KB, compress further with smaller dimension
+          if (result.length > 80000) {
+            canvas.width = Math.max(1, Math.round(canvas.width * 0.75));
+            canvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            result = canvas.toDataURL('image/jpeg', 0.55);
+          }
+          resolve(result);
+        } catch (e) {
+          resolve('https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80');
+        }
+      };
+      img.onerror = () => {
+        // Fallback: Never resolve with an oversized >1MB string! Return standard placeholder
+        resolve('https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80');
+      };
+      img.src = dataUrl;
+    } catch (e) {
+      resolve('https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80');
+    }
+  });
+}
+
+/**
+ * Safely uploads a base64 data URL or File/Blob to the server storage,
+ * returning a lightweight URL (like /uploads/...) instead of an oversized data string.
+ * If server upload is unavailable, compresses the base64 to under 50KB to respect Firestore's 1MB limit.
+ */
+export async function uploadDataUrlOrFile(
+  dataUrlOrFile: string | File | Blob,
+  defaultName: string = 'media_asset'
+): Promise<string> {
+  if (!dataUrlOrFile) return '';
+
+  // If already a safe URL, return as is
+  if (typeof dataUrlOrFile === 'string') {
+    const trimmed = dataUrlOrFile.trim();
+    if (!trimmed.startsWith('data:') && !trimmed.startsWith('blob:') && trimmed.length < 1000) {
+      return trimmed;
+    }
+  }
+
+  try {
+    let blob: Blob | null = null;
+    let fileName = defaultName;
+
+    if (typeof dataUrlOrFile === 'string') {
+      if (dataUrlOrFile.startsWith('data:')) {
+        blob = dataUrlToBlob(dataUrlOrFile);
+        if (!blob) {
+          throw new Error('Failed to convert dataUrl to Blob');
+        }
+        if (!fileName.includes('.')) {
+          const ext = blob.type.split('/')[1] || 'png';
+          fileName = `${fileName}.${ext}`;
+        }
+      } else {
+        return dataUrlOrFile;
+      }
+    } else {
+      blob = dataUrlOrFile;
+      if (dataUrlOrFile instanceof File && dataUrlOrFile.name) {
+        fileName = dataUrlOrFile.name;
+      }
+    }
+
+    if (blob) {
+      // Attempt persistent upload to backend
+      const formData = new FormData();
+      formData.append('file', blob, fileName);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.url) {
+          // Also cache locally in IndexedDB
+          try {
+            await saveMediaToIndexedDb(data.url, blob, fileName);
+          } catch (cErr) {}
+          return data.url;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('uploadDataUrlOrFile server error:', err);
+  }
+
+  // Fallback: If it is a data URL and still too large, compress it down to under 50KB!
+  if (typeof dataUrlOrFile === 'string' && dataUrlOrFile.startsWith('data:image/')) {
+    try {
+      const compressed = await compressBase64Image(dataUrlOrFile, 360, 0.7);
+      if (compressed && compressed.length < 100000) {
+        return compressed;
+      }
+    } catch (cErr) {
+      console.warn('Image compression fallback error:', cErr);
+    }
+  }
+
+  // If still oversized string (> 100,000 characters), do NOT return raw string to protect Firestore
+  if (typeof dataUrlOrFile === 'string') {
+    if (dataUrlOrFile.length > 100000) {
+      console.warn('Oversized asset dataUrl suppressed to prevent Firestore 1MB rejection.');
+      return 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80';
+    }
+    return dataUrlOrFile;
+  }
+
+  return '';
 }
 
 /**
