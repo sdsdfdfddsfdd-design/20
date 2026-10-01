@@ -141,7 +141,8 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="font-extrabold text-sm sm:text-base text-white tracking-wide group-hover:text-cyan-400 transition-colors truncate">
                     {brandName}
                   </span>
-                  {onOpenSiteSettings && (
+                  {/* Site Settings Edit Button - ONLY visible to logged-in Admin/Staff */}
+                  {onOpenSiteSettings && user && (user.role === 'admin' || user.role === 'employee' || user.role === 'designer' || user.permissions?.siteSettings) && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -149,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                         onOpenSiteSettings();
                       }}
                       className="p-1 rounded-lg text-slate-500 hover:text-amber-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                      title={lang === 'ar' ? 'تعديل لوجو واسم الموقع وأرقام التواصل' : 'Edit site info'}
+                      title={lang === 'ar' ? 'تعديل لوجو واسم الموقع وأرقام التواصل (للمدير فقط)' : 'Edit site info (Admin only)'}
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5" />
                     </button>
