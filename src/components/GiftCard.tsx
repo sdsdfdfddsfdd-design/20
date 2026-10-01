@@ -168,6 +168,16 @@ export const GiftCard: React.FC<GiftCardProps> = ({
               onError={(e) => {
                 const target = e.currentTarget;
                 const raw = gift.posterUrl || '';
+                // If it failed loading a .png, seamlessly try .webp
+                if (target.src.includes('.png') && !target.src.includes('_retry_webp')) {
+                  target.src = target.src.replace(/\.png(\?.*)?$/, '.webp') + '?_retry_webp=1';
+                  return;
+                }
+                // If it failed loading a .webp, try fallback .png
+                if (target.src.includes('.webp') && !target.src.includes('_retry_png')) {
+                  target.src = target.src.replace(/\.webp(\?.*)?$/, '.png') + '?_retry_png=1';
+                  return;
+                }
                 if (raw.startsWith('http') && !target.src.includes('/api/proxy-media')) {
                   target.src = `/api/proxy-media?url=${encodeURIComponent(raw)}`;
                 }

@@ -34,8 +34,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
-// Ensure uploads directory exists
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+// Ensure uploads directory exists in public/uploads for Vercel/Vite static serving
+const UPLOADS_DIR = path.resolve(process.cwd(), 'public/uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
