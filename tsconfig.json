@@ -22,5 +22,21 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "src",
+    "types.ts",
+    "constants.tsx",
+    "firebase.ts",
+    "server.ts",
+    "server"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "fix_*.ts",
+    "test_*.ts",
+    "test-*.ts",
+    "patch*.ts"
+  ]
 }

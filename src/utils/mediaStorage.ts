@@ -312,16 +312,20 @@ export function resolveMediaUrl(url?: string, useProxy = false): string {
     return trimmed.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace(/\?dl=[01]/, '');
   }
 
-  // Automatically proxy sites with strict hotlink blocking or scraping requirements
+  // Automatically proxy sites with strict hotlink blocking or scraping landing pages
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const isDirectMediaFile = /\.(mp4|webm|mov|png|jpg|jpeg|gif|webp|svg)($|\?)/i.test(trimmed);
+    
+    // If explicitly requested (for canvas frame extraction) or if it's a scraping landing page:
     if (
       useProxy ||
-      trimmed.includes('top4top.') ||
-      trimmed.includes('ibb.co') ||
-      trimmed.includes('postimg.cc') ||
-      trimmed.includes('streamable.com') ||
-      trimmed.includes('catbox.moe') ||
-      trimmed.includes('gofile.io')
+      (!isDirectMediaFile && (
+        trimmed.includes('top4top.') ||
+        trimmed.includes('ibb.co') ||
+        trimmed.includes('postimg.cc') ||
+        trimmed.includes('streamable.com') ||
+        trimmed.includes('gofile.io')
+      ))
     ) {
       return `/api/proxy-media?url=${encodeURIComponent(trimmed)}`;
     }

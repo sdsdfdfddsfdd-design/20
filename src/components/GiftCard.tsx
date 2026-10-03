@@ -149,7 +149,6 @@ export const GiftCard: React.FC<GiftCardProps> = ({
                     muted
                     playsInline
                     preload="metadata"
-                    crossOrigin="anonymous"
                     onError={handleVideoError}
                     className="w-full h-full object-contain pointer-events-none drop-shadow-2xl transform-gpu"
                   />
@@ -204,7 +203,6 @@ export const GiftCard: React.FC<GiftCardProps> = ({
             muted
             playsInline
             preload="metadata"
-            crossOrigin="anonymous"
             onError={handleVideoError}
             className="w-full h-full object-contain pointer-events-none drop-shadow-2xl transform-gpu"
           />

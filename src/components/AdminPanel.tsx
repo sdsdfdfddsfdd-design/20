@@ -14,6 +14,7 @@ import { FeatureAccessControlTab } from './admin/FeatureAccessControlTab';
 import { ExternalLinksManagerTab } from './admin/ExternalLinksManagerTab';
 import { UserCacheTab } from './admin/UserCacheTab';
 import { TelegramTab } from './admin/TelegramTab';
+import { ResourceMonitorTab } from './admin/ResourceMonitorTab';
 import { MaintenanceScreen } from './MaintenanceScreen';
 
 // Secondary app for creating users without logging out admin
@@ -28,7 +29,7 @@ interface AdminPanelProps {
 const EXPORT_FORMATS = ['AE Project', 'SVGA 2.0 EX', 'SVGA 2.0', 'Image Sequence', 'GIF (Animation)', 'APNG (Animation)', 'WebM (Video)', 'WebP (Animated)', 'VAP 1.0.5', 'VAP (MP4)', 'SVGA → YYEVA'];
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onCancel }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'store' | 'keys' | 'assets' | 'settings' | 'records' | 'account_versions' | 'features_access' | 'server_outage' | 'external_links' | 'user_cache' | 'telegram'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'store' | 'keys' | 'assets' | 'settings' | 'records' | 'account_versions' | 'features_access' | 'server_outage' | 'external_links' | 'user_cache' | 'telegram' | 'resource_monitor'>('users');
   const [dropdownState, setDropdownState] = useState<{ userId: string; x: number; y: number; position: 'top' | 'bottom' } | null>(null);
   const [subDropdownState, setSubDropdownState] = useState<{ userId: string; x: number; y: number; position: 'top' | 'bottom' } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +86,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onCancel })
 
   const TABS = [
     { id: 'users', label: 'المستخدمين', icon: <Users /> },
+    { id: 'resource_monitor', label: 'مراقبة الموارد و Vercel ⚡', icon: <Activity className="text-emerald-400" /> },
     { id: 'user_cache', label: 'كاش المستخدمين ☠️', icon: <span className="text-base">☠️</span> },
     { id: 'telegram', label: 'إرسال لـ Telegram 🚀', icon: <Send className="text-sky-400" /> },
     { id: 'features_access', label: 'تحديد الوظائف', icon: <ShieldCheck /> },
@@ -978,6 +980,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onCancel })
             </div>
           ) : (
             <>
+              {activeTab === 'resource_monitor' && (
+                <ResourceMonitorTab currentUser={currentUser} />
+              )}
               {activeTab === 'features_access' && <FeatureAccessControlTab />}
               {activeTab === 'user_cache' && (
                 <UserCacheTab 

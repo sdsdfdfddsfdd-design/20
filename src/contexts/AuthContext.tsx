@@ -26,12 +26,16 @@ const getDeviceId = () => {
   return id;
 };
 
-// Helper to get client IP
+let cachedClientIp: string | null = null;
+
+// Helper to get client IP (cached in-memory per session)
 const getClientIp = async () => {
+  if (cachedClientIp) return cachedClientIp;
   try {
     const res = await fetch('/api/ip');
     const data = await res.json();
-    return data.ip || '127.0.0.1';
+    cachedClientIp = data.ip || '127.0.0.1';
+    return cachedClientIp;
   } catch (e) {
     console.warn("Could not fetch IP:", e);
     return '127.0.0.1';

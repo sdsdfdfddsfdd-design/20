@@ -91,7 +91,12 @@ export const TelegramTab: React.FC<TelegramTabProps> = ({ currentUser }) => {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 15000); // refresh every 15s
+    // Conservative refresh every 60s only when document is active/visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus();
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
