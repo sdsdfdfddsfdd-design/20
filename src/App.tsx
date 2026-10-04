@@ -18,6 +18,7 @@ import { SupportModal } from './components/SupportModal';
 import { VipModal } from './components/VipModal';
 import { SiteSettingsModal } from './components/SiteSettingsModal';
 import { Footer } from './components/Footer';
+import { Check } from 'lucide-react';
 import { seedDatabase, subscribeToGifts, subscribeToDeliveries, subscribeToEmployees, subscribeToBanners, addDelivery, purgeDummyGifts, isDummyGift } from './lib/firebaseService';
 
 export default function App() {
@@ -165,6 +166,37 @@ export default function App() {
     return null;
   });
 
+  // Permission check for managing gifts (admin, staff, designer)
+  const canManageGifts = Boolean(
+    user && (user.role === 'admin' || user.role === 'employee' || user.role === 'designer' || (user.permissions as any)?.gifts || (user.permissions as any)?.giftUploadAndPublish !== false)
+  );
+  const [pinToastMessage, setPinToastMessage] = useState<string | null>(null);
+
+  const handleTogglePinGift = async (gift: GiftItem) => {
+    const isNowPinned = !gift.pinnedTop;
+    const updatedGift: GiftItem = {
+      ...gift,
+      pinnedTop: isNowPinned,
+      pinnedAt: isNowPinned ? new Date().toISOString() : undefined,
+    };
+
+    setGifts((prev) => prev.map((g) => (g.id === gift.id ? updatedGift : g)));
+
+    setPinToastMessage(
+      isNowPinned
+        ? (lang === 'ar' ? `✓ تم تمييز الهدية (${gift.titleAr || gift.title}) بشعار (جديد) وتثبيتها في الصفحة الأولى بنجاح!` : `✓ 已成功为礼物 (${gift.title}) 启用 (新品/NEW) 置顶徽章！`)
+        : (lang === 'ar' ? `تم إلغاء شعار جديد من الهدية (${gift.titleAr || gift.title}).` : `已取消礼物 (${gift.title}) 的新品置顶。`)
+    );
+    setTimeout(() => setPinToastMessage(null), 3500);
+
+    try {
+      const { updateGift } = await import('./lib/firebaseService');
+      await updateGift(updatedGift);
+    } catch (err) {
+      console.error('Failed to update gift pin status in Firestore:', err);
+    }
+  };
+
   // Dynamic Categories & Site Settings State
   const [categories, setCategories] = useState<{ id: string; name: string; nameAr?: string; nameEn?: string }[]>([]);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
@@ -239,6 +271,19 @@ export default function App() {
     });
     const list = Array.from(map.values());
     list.sort((a, b) => {
+      // 1. PINNED GIFTS ALWAYS COME FIRST (Page 1 and top rows)
+      const aPinned = Boolean(a.pinnedTop);
+      const bPinned = Boolean(b.pinnedTop);
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+      if (aPinned && bPinned) {
+        const pinTimeA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const pinTimeB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        if (pinTimeA && pinTimeB && pinTimeA !== pinTimeB) return pinTimeB - pinTimeA;
+      }
+
+      // 2. Standard chronological order (newest first)
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       if (timeA && timeB && timeA !== timeB) return timeB - timeA;
@@ -269,7 +314,9 @@ export default function App() {
         const giftCat = (gift.category || '').toLowerCase();
         const selectedCat = category.toLowerCase();
         
-        if (selectedCat === 'frames') {
+        if (selectedCat === 'new') {
+          if (!gift.pinnedTop) return false;
+        } else if (selectedCat === 'frames') {
           if (giftCat !== 'frames' && !giftCat.includes('frame') && !gift.title?.includes('إطار') && !gift.titleAr?.includes('إطار')) return false;
         } else if (selectedCat === 'luxury_frame') {
           if (giftCat !== 'luxury_frame' && !(giftCat.includes('luxury') && giftCat.includes('frame')) && !gift.titleAr?.includes('إطار فاخر')) return false;
@@ -524,6 +571,8 @@ ID الحساب: ${user.id}` : ''}
                       gift={gift}
                       lang={lang}
                       isSelected={inspectedGift?.id === gift.id}
+                      canPin={canManageGifts}
+                      onTogglePin={handleTogglePinGift}
                       onSelectGift={(g) => {
                         setInspectedGift(g);
                         setSelectedGift(g);
@@ -636,6 +685,11 @@ ID الحساب: ${user.id}` : ''}
         onAddToCart={(g) => handleAddToCart(g)}
         onOpenPurchase={(g) => handleInitiatePurchase(g)}
         allGifts={gifts}
+        canPin={canManageGifts}
+        onTogglePin={(g) => {
+          handleTogglePinGift(g);
+          setSelectedGift(prev => prev && prev.id === g.id ? { ...prev, pinnedTop: !prev.pinnedTop } : prev);
+        }}
         onSelectGift={(g) => {
           setInspectedGift(g);
           setSelectedGift(g);
@@ -720,6 +774,16 @@ ID الحساب: ${user.id}` : ''}
         siteSettings={siteSettings}
         onSettingsSaved={(newSettings) => setSiteSettings(newSettings)}
       />
+
+      {/* Real-time Pin Confirmation Toast */}
+      {pinToastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-900/95 border border-emerald-500/60 text-white text-xs sm:text-sm font-bold shadow-2xl backdrop-blur-md flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
+            <Check className="w-3.5 h-3.5 stroke-[3]" />
+          </div>
+          <span>{pinToastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

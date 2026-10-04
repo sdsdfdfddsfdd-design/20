@@ -13,7 +13,9 @@ import {
   Share2,
   RefreshCw,
   AlertCircle,
-  Film
+  Film,
+  Check,
+  Flame
 } from 'lucide-react';
 import { GiftItem, Language } from '../types';
 import { translations } from '../utils/translations';
@@ -28,6 +30,8 @@ interface GiftModalProps {
   onOpenPurchase: (gift: GiftItem) => void;
   allGifts: GiftItem[];
   onSelectGift: (gift: GiftItem) => void;
+  canPin?: boolean;
+  onTogglePin?: (gift: GiftItem) => void;
 }
 
 export const GiftModal: React.FC<GiftModalProps> = ({
@@ -36,7 +40,9 @@ export const GiftModal: React.FC<GiftModalProps> = ({
   lang,
   onOpenPurchase,
   allGifts = [],
-  onSelectGift
+  onSelectGift,
+  canPin = false,
+  onTogglePin
 }) => {
   const t = translations[lang];
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -219,6 +225,28 @@ export const GiftModal: React.FC<GiftModalProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {canPin && onTogglePin ? (
+              <button
+                type="button"
+                onClick={() => onTogglePin(gift)}
+                className={`p-1 px-3 rounded-full border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md select-none transform-gpu ${
+                  gift.pinnedTop
+                    ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 text-white shadow-[0_4px_12px_rgba(239,68,68,0.5),0_1px_0_rgba(255,255,255,0.6)_inset] scale-105'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                }`}
+                title={lang === 'ar' ? (gift.pinnedTop ? 'شعار جديد 3D مفعل (اضغط للإلغاء)' : 'تثبيت كـ جديد') : '置顶'}
+              >
+                <Flame className={`w-3.5 h-3.5 ${gift.pinnedTop ? 'text-amber-200 fill-orange-300 animate-pulse' : 'text-slate-400'}`} />
+                <span className={gift.pinnedTop ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}>
+                  {gift.pinnedTop ? (lang === 'ar' ? 'جديد ✓' : 'NEW ✓') : (lang === 'ar' ? '+ جديد' : '+ NEW')}
+                </span>
+              </button>
+            ) : gift.pinnedTop ? (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 text-white text-xs font-black shadow-[0_4px_12px_rgba(239,68,68,0.5),0_1px_0_rgba(255,255,255,0.6)_inset]">
+                <Flame className="w-3.5 h-3.5 text-amber-200 fill-orange-300 animate-pulse" />
+                <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{lang === 'ar' ? 'جديد' : 'NEW'}</span>
+              </div>
+            ) : null}
             <button
               onClick={() => setIsFavorited(!isFavorited)}
               className={`p-2 rounded-full border transition-colors ${
@@ -465,9 +493,35 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setIsFavorited(!isFavorited)}
-                  className={`hidden sm:flex p-2.5 rounded-xl border transition-colors ${
+                <div className="hidden sm:flex items-center gap-2">
+                  {canPin && onTogglePin ? (
+                    <button
+                      type="button"
+                      onClick={() => onTogglePin(gift)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition-all cursor-pointer select-none transform-gpu ${
+                        gift.pinnedTop
+                          ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 text-white border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 shadow-[0_4px_14px_rgba(239,68,68,0.5),0_1px_0_rgba(255,255,255,0.6)_inset] scale-105'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-amber-400/60 hover:text-white'
+                      }`}
+                      title={lang === 'ar' ? (gift.pinnedTop ? 'شعار جديد 3D مفعل (اضغط للإلغاء)' : 'تعيين كـ جديد في الصفحة الأولى') : '设为最新'}
+                    >
+                      <Flame className={`w-3.5 h-3.5 ${gift.pinnedTop ? 'text-amber-200 fill-orange-300 animate-pulse' : 'text-slate-400'}`} />
+                      <span className={gift.pinnedTop ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}>
+                        {gift.pinnedTop ? (lang === 'ar' ? 'جديد ✓' : 'NEW ✓') : (lang === 'ar' ? '+ تعيين جديد' : '+ Set NEW')}
+                      </span>
+                    </button>
+                  ) : gift.pinnedTop ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 text-white text-xs font-black shadow-[0_4px_12px_rgba(239,68,68,0.5),0_1px_0_rgba(255,255,255,0.6)_inset]">
+                      <Flame className="w-3.5 h-3.5 text-amber-200 fill-orange-300 animate-pulse shrink-0" />
+                      <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                        {lang === 'ar' ? 'جديد' : lang === 'zh' ? '新品' : 'NEW'}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  <button
+                    onClick={() => setIsFavorited(!isFavorited)}
+                    className={`p-2.5 rounded-xl border transition-colors ${
                     isFavorited 
                       ? 'bg-pink-500/20 border-pink-500/40 text-pink-400' 
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -476,6 +530,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({
                 >
                   <Heart className={`w-4 h-4 ${isFavorited ? 'fill-current' : ''}`} />
                 </button>
+                </div>
               </div>
 
               {/* Formats Info Bar */}

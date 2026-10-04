@@ -38,6 +38,7 @@ import {
   Phone,
   Shield,
   Briefcase,
+  Flame,
   X,
   Image as ImageIcon,
   SlidersHorizontal,
@@ -1601,17 +1602,58 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const filteredGifts = gifts.filter((g) => {
-    // Search filter
-    const matchesSearch = g.title.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      g.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      (g.titleAr && g.titleAr.includes(searchFilter));
-      
-    // Permission filter
-    const matchesPermission = isAdmin || (currentUser && g.author.id === currentUser.id);
-    
-    return matchesSearch && matchesPermission;
-  });
+  const [pinnedFilterOnly, setPinnedFilterOnly] = useState(false);
+
+  const handleTogglePinGift = async (gift: GiftItem) => {
+    const isNowPinned = !gift.pinnedTop;
+    const updatedGift: GiftItem = {
+      ...gift,
+      pinnedTop: isNowPinned,
+      pinnedAt: isNowPinned ? new Date().toISOString() : undefined,
+    };
+
+    setGifts((prev) => prev.map((g) => (g.id === gift.id ? updatedGift : g)));
+
+    try {
+      await updateGift(updatedGift);
+      setSuccessMessage(
+        isNowPinned
+          ? (lang === 'ar' ? `✓ تم تعيين الهدية [${gift.id}] وتثبيتها في الصفحة الأولى والصفوف الأولى بنجاح!` : `✓ 已成功将礼物 [${gift.id}] 置顶至首页首排！`)
+          : (lang === 'ar' ? `تم إلغاء تثبيت الهدية [${gift.id}] من الصفحة الأولى.` : `已取消礼物 [${gift.id}] 的首页置顶。`)
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Error toggling pin status:', err);
+    }
+  };
+
+  const filteredGifts = gifts
+    .filter((g) => {
+      // Search filter
+      const matchesSearch =
+        g.title.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        g.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        (g.titleAr && g.titleAr.includes(searchFilter));
+
+      // Permission filter
+      const matchesPermission = isAdmin || (currentUser && g.author.id === currentUser.id);
+
+      // Pinned only filter
+      const matchesPinned = !pinnedFilterOnly || Boolean(g.pinnedTop);
+
+      return matchesSearch && matchesPermission && matchesPinned;
+    })
+    .sort((a, b) => {
+      const aPinned = Boolean(a.pinnedTop);
+      const bPinned = Boolean(b.pinnedTop);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      if (aPinned && bPinned) {
+        const pinTimeA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const pinTimeB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        if (pinTimeA && pinTimeB && pinTimeA !== pinTimeB) return pinTimeB - pinTimeA;
+      }
+      return 0;
+    });
 
   return (
     <div className="max-w-[1720px] mx-auto p-4 sm:p-6 space-y-6">
@@ -3612,6 +3654,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               </div>
 
+              {/* FILTER: PINNED TO PAGE 1 ONLY */}
+              <button
+                type="button"
+                onClick={() => setPinnedFilterOnly(!pinnedFilterOnly)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer select-none transform-gpu ${
+                  pinnedFilterOnly
+                    ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 text-white font-black border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 shadow-[0_4px_12px_rgba(239,68,68,0.5),0_1px_0_rgba(255,255,255,0.6)_inset] scale-105'
+                    : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:border-orange-500/50 hover:text-white'
+                }`}
+                title={lang === 'ar' ? 'تصفية: عرض الهدايا المعينة كـ جديد في الصفحة الأولى فقط' : '仅看置顶/新品'}
+              >
+                <Flame className={`w-3.5 h-3.5 ${pinnedFilterOnly ? 'text-amber-200 fill-orange-300 animate-pulse' : 'text-amber-400'}`} />
+                <span>
+                  {lang === 'ar'
+                    ? `المثبتة كـ جديد 🔥 (${gifts.filter(g => g.pinnedTop).length})`
+                    : `新品置顶 🔥 (${gifts.filter(g => g.pinnedTop).length})`}
+                </span>
+              </button>
+
               {/* PURGE DUMMY GIFTS BUTTON */}
               <button
                 type="button"
@@ -3699,6 +3760,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <span className="absolute top-3 right-3 bg-black/80 backdrop-blur-md border border-cyan-500/40 text-cyan-300 font-mono font-bold text-xs px-2.5 py-1 rounded-xl shadow-lg">
                       {g.id}
                     </span>
+
+                    {/* Top Center: Pin to Page 1 Button (شعار جديد في الصفحة الأولى والصفوف الأولى) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTogglePinGift(g);
+                      }}
+                      className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xl transition-all cursor-pointer select-none transform-gpu ${
+                        g.pinnedTop
+                          ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 text-white border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 shadow-[0_4px_14px_rgba(239,68,68,0.55),0_1px_0_rgba(255,255,255,0.6)_inset] scale-105'
+                          : 'bg-black/80 hover:bg-slate-900 text-slate-200 hover:text-amber-300 border border-slate-700/80 backdrop-blur-md'
+                      }`}
+                      title={lang === 'ar' ? (g.pinnedTop ? 'شعار جديد 3D مفعل (اضغط لإلغاء التثبيت)' : 'تعيين كـ جديد في الصفحة الأولى والصفوف الأولى') : '设为最新置顶'}
+                    >
+                      <Flame className={`w-3.5 h-3.5 ${g.pinnedTop ? 'text-amber-200 fill-orange-300 animate-pulse' : 'text-slate-400'}`} />
+                      <span className={g.pinnedTop ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}>
+                        {g.pinnedTop ? (lang === 'ar' ? 'جديد ✓' : 'NEW ✓') : (lang === 'ar' ? '+ تعيين جديد' : '+ Set NEW')}
+                      </span>
+                    </button>
 
                     {/* Top Left: Price Badge */}
                     <span className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-xl shadow-lg flex items-center gap-1">
@@ -3820,6 +3901,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] font-mono border-b border-slate-800">
                   <tr>
                     <th className="p-3.5">ID / 封面</th>
+                    <th className="p-3.5 text-center">{lang === 'ar' ? 'شعار جديد' : '新品置顶'}</th>
                     <th className="p-3.5">{lang === 'ar' ? 'اسم الهدية' : '礼物名称'}</th>
                     <th className="p-3.5">{lang === 'ar' ? 'السعر' : '价格 (CNY)'}</th>
                     <th className="p-3.5">{lang === 'ar' ? 'التصنيف' : '分类/维度'}</th>
@@ -3850,6 +3932,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           )}
                           <span className="font-mono text-cyan-400 font-bold text-xs">{g.id}</span>
                         </div>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePinGift(g)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer select-none transform-gpu ${
+                            g.pinnedTop
+                              ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 text-white font-black border-t border-amber-200/90 border-b border-red-900 border-x border-orange-400 shadow-[0_3px_10px_rgba(239,68,68,0.45),0_1px_0_rgba(255,255,255,0.6)_inset] scale-105'
+                              : 'bg-slate-900 text-slate-400 border border-slate-700 hover:text-white hover:border-orange-500/60'
+                          }`}
+                          title={lang === 'ar' ? (g.pinnedTop ? 'شعار جديد 3D مفعل (اضغط للإلغاء)' : 'تعيين كـ جديد في الصفحة الأولى') : '设为最新'}
+                        >
+                          <Flame className={`w-3.5 h-3.5 ${g.pinnedTop ? 'text-amber-200 fill-orange-300 animate-pulse' : 'text-slate-500'}`} />
+                          <span className={g.pinnedTop ? 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}>
+                            {g.pinnedTop ? (lang === 'ar' ? 'جديد ✓' : 'NEW ✓') : (lang === 'ar' ? '+ جديد' : '+ NEW')}
+                          </span>
+                        </button>
                       </td>
                       <td className="p-3.5 font-semibold text-white">
                         <div className="text-sm font-bold">{g.title}</div>

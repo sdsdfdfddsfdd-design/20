@@ -46,6 +46,8 @@ export interface GiftItem {
   isNew?: boolean;
   isFeatured?: boolean;
   isVip?: boolean;
+  pinnedTop?: boolean; // Pinned to the first page and top rows
+  pinnedAt?: string; // Timestamp when pinned to maintain pin order
   createdAt: string;
 }
 

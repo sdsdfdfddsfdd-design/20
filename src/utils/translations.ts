@@ -57,7 +57,7 @@ export const translations = {
 
     // Quick categories
     quickVip: '佳维会员专区',
-    quickFeatured: '佳维精选礼物',
+    quickFeatured: '🔥 新品/NEW',
     quickOverseas: '海外特选',
     quickAi: '佳维AI定制动效',
     quickDesigner: '设计师精选礼物',
@@ -264,7 +264,7 @@ export const translations = {
 
     // Quick categories
     quickVip: 'منطقة VIP',
-    quickFeatured: 'الهدايا المختارة',
+    quickFeatured: '🔥 جديد',
     quickOverseas: 'مختارات عالمية',
     quickAi: 'مؤثرات الذكاء الاصطناعي',
     quickDesigner: 'مختارات المصممين',
@@ -471,7 +471,7 @@ export const translations = {
 
     // Quick categories
     quickVip: 'VIP Club',
-    quickFeatured: 'Featured Gifts',
+    quickFeatured: '🔥 NEW',
     quickOverseas: 'Overseas Picks',
     quickAi: 'AI Custom VFX',
     quickDesigner: 'Designer Picks',
